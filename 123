@@ -6,10 +6,10 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/configuration-snippet: |
-      rewrite ^/rabbitmq-test$ /rabbitmq-test/ permanent;
-      rewrite ^/rabbitmq-test/(.*)$ /$1 break;
+      rewrite ^(/rabbitmq-test)$ $1/ permanent;
+      rewrite ^/rabbitmq-test(/|$)(.*) /$2 break;
 spec:
   rules:
   - host: <твой-домен>
@@ -22,14 +22,7 @@ spec:
             name: rabbitmq
             port:
               number: 15672
-      - path: /api
-        pathType: Prefix
-        backend:
-          service:
-            name: rabbitmq
-            port:
-              number: 15672
-      - path: /static
+      - path: /rabbitmq-test/(.*)
         pathType: Prefix
         backend:
           service:
