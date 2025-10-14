@@ -6,15 +6,30 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
     nginx.ingress.kubernetes.io/configuration-snippet: |
-      rewrite ^/rabbitmq/(.*)$ /$1 break;
+      rewrite ^/rabbitmq-test$ /rabbitmq-test/ permanent;
+      rewrite ^/rabbitmq-test/(.*)$ /$1 break;
 spec:
   rules:
-  - host: your-main-domain.com    # основной домен, который уже работает
+  - host: your-main-domain.com   # ← подставь свой домен
     http:
       paths:
-      - path: /rabbitmq
+      - path: /rabbitmq-test
+        pathType: Prefix
+        backend:
+          service:
+            name: rabbitmq        # ← имя сервиса RabbitMQ
+            port:
+              number: 15672
+      - path: /static
+        pathType: Prefix
+        backend:
+          service:
+            name: rabbitmq
+            port:
+              number: 15672
+      - path: /api
         pathType: Prefix
         backend:
           service:
