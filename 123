@@ -2,20 +2,22 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: rabbitmq-ui
-  namespace: rabbitmq-namespace
+  namespace: messaging
   annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      rewrite ^/rabbitmq/(.*)$ /$1 break;
 spec:
-  ingressClassName: nginx
   rules:
-    - host: rabbitmq.example.com      # 👈 твой домен / поддомен
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: rabbitmq        # 👈 имя сервиса RabbitMQ
-                port:
-                  number: 15672
+  - host: your-main-domain.com    # основной домен, который уже работает
+    http:
+      paths:
+      - path: /rabbitmq
+        pathType: Prefix
+        backend:
+          service:
+            name: rabbitmq
+            port:
+              number: 15672
