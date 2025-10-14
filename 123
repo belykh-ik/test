@@ -12,17 +12,10 @@ metadata:
       rewrite ^/rabbitmq-test/(.*)$ /$1 break;
 spec:
   rules:
-  - host: your-main-domain.com   # ← подставь свой домен
+  - host: <твой-домен>
     http:
       paths:
       - path: /rabbitmq-test
-        pathType: Prefix
-        backend:
-          service:
-            name: rabbitmq        # ← имя сервиса RabbitMQ
-            port:
-              number: 15672
-      - path: /static
         pathType: Prefix
         backend:
           service:
@@ -30,6 +23,13 @@ spec:
             port:
               number: 15672
       - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: rabbitmq
+            port:
+              number: 15672
+      - path: /static
         pathType: Prefix
         backend:
           service:
