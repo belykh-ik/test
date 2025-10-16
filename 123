@@ -1,31 +1,3 @@
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: rabbitmq-ui
-  namespace: messaging
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      rewrite ^(/rabbitmq-test)$ $1/ permanent;
-      rewrite ^/rabbitmq-test(/|$)(.*) /$2 break;
-spec:
-  rules:
-  - host: <твой-домен>
-    http:
-      paths:
-      - path: /rabbitmq-test
-        pathType: Prefix
-        backend:
-          service:
-            name: rabbitmq
-            port:
-              number: 15672
-      - path: /rabbitmq-test/(.*)
-        pathType: Prefix
-        backend:
-          service:
-            name: rabbitmq
-            port:
-              number: 15672
+export HELM_APP_ENV='{"FOO":"bar","HELLO":"world"}'
+echo "${HELM_APP_ENV}" | jq -r 'to_entries[] | "\(.key)=\(.value)"' > .env
+cat .env
