@@ -1,30 +1,51 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-# 1. 📥 Экспортируем переменную среды
-export MY_KEY="my_value"
+# 📁 Временный файл с JSON — имитируем GitLab переменную HELM_APP_ENV_DEV
+# В реальном CI это значение можно получить из переменной окружения:
+#   echo "$HELM_APP_ENV_DEV" > helm_app_env.json
+cat > helm_app_env.json <<'EOF'
+{
+  "application": {
+    "env": {
+      "MY_VAR": "MY_VALUE",
+      "MY_OTHER_VAR": "MY_OTHER_VALUE"
+    },
+    "secret": {
+      "MY_SECRET_VAR": "MY_SECRET_VALUE",
+      "MY_OTHER_SECRET_VAR": "MY_OTHER_SECRET_VALUE"
+    }
+  }
+}
+EOF
 
-# 2. 📝 Добавляем переменную в .env
-echo "MY_KEY=$MY_KEY" >> .env
+echo "✅ JSON с переменными сохранён в helm_app_env.json"
 
-# 3. 🧹 Чистим .env: удаляем пустые строки, кавычки и пробелы вокруг "="
+# 🧪 Проверяем что jq установлен
+if ! command -v jq &>/dev/null; then
+  echo "❌ jq не установлен. Установи: apt install -y jq (или аналог для твоей ОС)"
+  exit 1
+fi
+
+# 🧾 Преобразуем JSON в .env
+jq -r '.application.env | to_entries[] | "\(.key)=\(.value)"' helm_app_env.json > .env
+jq -r '.application.secret | to_entries[] | "\(.key)=\(.value)"' helm_app_env.json >> .env
+
+# 🧹 Чистим файл от возможных лишних символов
 sed -i '/^$/d' .env
 sed -i 's/["'\'']//g' .env
 sed -i 's/ *= */=/' .env
-# Убираем возможные \r (Windows переносы строк)
 sed -i 's/\r$//' .env
 
-# 4. 🧪 Проверка валидности
-echo "👉 Проверка валидности .env"
+# ✅ Проверка валидности .env
 if grep -qvE '^[A-Za-z_][A-Za-z0-9_]*=.*$' .env; then
-  echo "❌ Обнаружены невалидные строки:"
+  echo "❌ Обнаружены невалидные строки в .env:"
   grep -n -vE '^[A-Za-z_][A-Za-z0-9_]*=.*$' .env
   exit 1
 else
-  echo "✅ .env валидный"
+  echo "✅ .env прошёл проверку"
 fi
 
-# 5. 🕵️ Проверка результата
-echo
-echo "📄 Текущее содержимое .env:"
+# 🪄 Показать содержимое
+echo "📄 Содержимое .env:"
 cat .env
