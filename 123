@@ -1,3 +1,7 @@
-export HELM_APP_ENV='{"FOO":"bar","HELLO":"world"}'
-echo "${HELM_APP_ENV}" | jq -r 'to_entries[] | "\(.key)=\(.value)"' > .env
-cat .env
+# Удаляем пустые строки и кавычки, убираем пробелы вокруг "="
+sed -i '/^$/d' .env
+sed -i 's/["'\'']//g' .env
+sed -i 's/ *= */=/' .env
+
+# Проверяем, что все строки валидны
+grep -E '^[A-Za-z_][A-Za-z0-9_]*=.*$' .env || { echo "❌ Invalid .env format"; exit 1; }
