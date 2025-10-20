@@ -1,0 +1,16 @@
+deploy_dev:
+  stage: deploy
+  variables:
+    GIT_STRATEGY: clone
+  environment:
+    name: dev
+  script:
+    - echo ">>> Building frontend"
+    - npm ci --no-cache --verbose --registry=https://nexus.sogaz.ru/repository/npm-proxy/
+    - npm run build
+    - echo ">>> Deploying to dev server"
+    - rsync -avz --delete dist/ devuser@dt07:/var/www/edo-dev/
+    - echo ">>> Restarting nginx"
+    - ssh devuser@dt07 'sudo systemctl reload nginx'
+  tags:
+    - test-fe
