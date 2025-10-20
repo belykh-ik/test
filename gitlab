@@ -19,3 +19,34 @@ deploy_dev:
     - test-fe
   rules:
     - if: '$CI_COMMIT_BRANCH == "dev"'
+
+
+deploy_dev:
+  stage: deploy
+  variables:
+    GIT_STRATEGY: clone
+  environment:
+    name: dev
+  script:
+    - echo ">>> Установка зависимостей"
+    - npm ci --no-cache --verbose --registry=https://nexus.sogaz.ru/repository/npm-proxy/
+    - echo ">>> Сборка проекта"
+    - npm run build
+
+    - echo ">>> Подготовка временной директории"
+    - BUILD_DIR="/var/www/releases/$(date +%Y%m%d%H%M%S)"
+    - mkdir -p "$BUILD_DIR"
+    - cp -r dist/* "$BUILD_DIR"
+
+    - echo ">>> Переключение симлинка на новую версию"
+    - ln -sfn "$BUILD_DIR" /var/www/edo-dev
+
+    - echo ">>> Перезапуск nginx"
+    - sudo systemctl reload nginx
+
+    - echo ">>> Очистка старых билдов (оставляем 3 последних)"
+    - ls -dt /var/www/releases/* | tail -n +4 | xargs rm -rf || true
+  tags:
+    - test-fe
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "dev"'
