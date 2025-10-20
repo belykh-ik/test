@@ -5,12 +5,17 @@ deploy_dev:
   environment:
     name: dev
   script:
-    - echo ">>> Building frontend"
+    - echo ">>> Установка зависимостей"
     - npm ci --no-cache --verbose --registry=https://nexus.sogaz.ru/repository/npm-proxy/
+    - echo ">>> Сборка проекта"
     - npm run build
-    - echo ">>> Deploying to dev server"
-    - rsync -avz --delete dist/ devuser@dt07:/var/www/edo-dev/
-    - echo ">>> Restarting nginx"
-    - ssh devuser@dt07 'sudo systemctl reload nginx'
+    - echo ">>> Очистка старой статики"
+    - sudo rm -rf /var/www/edo-dev/*
+    - echo ">>> Копирование новых файлов"
+    - sudo cp -r dist/* /var/www/edo-dev/
+    - echo ">>> Перезапуск nginx"
+    - sudo systemctl reload nginx
   tags:
     - test-fe
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "dev"'
