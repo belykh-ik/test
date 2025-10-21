@@ -1,5 +1,1 @@
-Host myserver
-    HostName 10.77.147.146             # <-- IP или DNS твоего сервера
-    User myuser                        # <-- твой SSH логин
-    LocalForward 8080 127.0.0.1:8080
-    ProxyCommand "C:\\Program Files\\PuTTY\\plink.exe" -D 9998 -nc %h:%p localhost
+gitlab-runner ALL=NOPASSWD: /bin/systemctl reload nginx
