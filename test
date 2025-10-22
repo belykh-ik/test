@@ -1,20 +1,4 @@
-deploy_backend:
-  stage: deploy
-  tags:
-    - lpu-test
-  rules:
-    - if: '$CI_COMMIT_REF_NAME == "dev"'
-  before_script:
-    # Удаляем только backend-контейнер, если он уже есть
-    - echo ">>> Останавливаем и удаляем старый контейнер backend-${CI_COMMIT_REF_NAME}"
-    - docker rm -f backend-${CI_COMMIT_REF_NAME} 2>/dev/null || true
-
-  script:
-    - echo ">>> Сборка образа для backend"
-    - docker-compose -f docker-compose-dev.yml build backend
-
-    - echo ">>> Запуск только backend без остановки остальных сервисов"
-    - docker-compose -f docker-compose-dev.yml up -d --no-deps --remove-orphans backend
-
-    - echo ">>> Проверка запущенных контейнеров"
-    - docker ps --filter "name=backend-${CI_COMMIT_REF_NAME}"
+networks:
+  default:
+    external: true
+    name: server-edo-dev
