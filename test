@@ -1,3 +1,14 @@
+version: "3.8"
+
+services:
+  edo-insurance-policy-impl:
+    image: nexus.sogaz.ru/edo-insurance-policy-impl:latest
+    volumes:
+      - /data/logs/eip-dev:/data/logs/eip-dev
+    container_name: edo-insurance-policy-impl-${CI_COMMIT_REF_NAME}
+    ports:
+      - "8094:8080"
+
 networks:
   default:
     external: true
