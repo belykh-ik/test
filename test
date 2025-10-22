@@ -1,14 +1,1 @@
-rollback-deploy:
-  stage: rollback
-  image: nexus.sogaz.ru/alpine/k8s:1.32.5
-  tags:
-    - k8s-stage
-  variables:
-    PROJECT_NAME: ${IMAGE_NAME}
-    K8S_NS: service-stage
-  script:
-    - mkdir -p /builds_dir/.kube
-    - echo "${KUBECONFIG_STAGE}" | base64 -d > /builds_dir/.kube/config
-    - kubectl rollout undo deployment/${PROJECT_NAME}-deployment --namespace ${K8S_NS} --kubeconfig /builds_dir/.kube/config
-  when: manual
-  allow_failure: false
+kubectl get rs -n <namespace> --sort-by=.metadata.creationTimestamp
