@@ -1,1 +1,1 @@
-kubectl get rs -n <namespace> --sort-by=.metadata.creationTimestamp
+kubectl get rs <replicaset_name> -n <namespace> -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}'
