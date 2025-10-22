@@ -1,4 +1,4 @@
-rollback-by-image:
+rollback-previous:
   stage: rollback
   image: nexus.sogaz.ru/alpine/k8s:1.32.5
   tags:
@@ -6,24 +6,31 @@ rollback-by-image:
   variables:
     DEPLOYMENT_NAME: my-app
     K8S_NS: service-stage
-    TARGET_IMAGE: "registry.example.com/my-app:1.0.10"  # нужный образ для отката
   script:
     - mkdir -p /builds_dir/.kube
     - echo "$KUBECONFIG_STAGE" | base64 -d > /builds_dir/.kube/config
 
-    # Находим ревизию по образу
-    - REVISION=$(kubectl get rs -n ${K8S_NS} \
-        -l app=${DEPLOYMENT_NAME} \
+    # Получаем список ревизий и образов, сортируем по номеру (по убыванию)
+    - kubectl get rs -n ${K8S_NS} -l app=${DEPLOYMENT_NAME} \
         -o jsonpath='{range .items[*]}{.metadata.annotations.deployment\.kubernetes\.io/revision}{"\t"}{.spec.template.spec.containers[*].image}{"\n"}{end}' \
-        | grep ${TARGET_IMAGE} \
-        | awk '{print $1}')
+        | sort -nr > rs_list.txt
 
-    - if [ -z "$REVISION" ]; then echo "❌ Ревизия с образом ${TARGET_IMAGE} не найдена"; exit 1; fi
-    - echo "✅ Найдена ревизия $REVISION для образа ${TARGET_IMAGE}"
+    - echo "📜 История ревизий:"
+    - cat rs_list.txt
 
-    # Откат на найденную ревизию
+    # Берём текущую ревизию
+    - CURRENT_REV=$(head -n 1 rs_list.txt | awk '{print $1}')
+    - CURRENT_IMAGE=$(head -n 1 rs_list.txt | awk '{print $2}')
+
+    # Находим предыдущую ревизию с другим образом
+    - PREV_REV=$(grep -v "${CURRENT_IMAGE}" rs_list.txt | head -n 1 | awk '{print $1}')
+
+    - if [ -z "$PREV_REV" ]; then echo "❌ Предыдущая ревизия с другим образом не найдена"; exit 1; fi
+    - echo "✅ Найдена предыдущая ревизия: $PREV_REV"
+
+    # Откат
     - kubectl rollout undo deployment/${DEPLOYMENT_NAME} \
-        --to-revision=$REVISION \
+        --to-revision=$PREV_REV \
         -n ${K8S_NS} \
         --kubeconfig /builds_dir/.kube/config
 
