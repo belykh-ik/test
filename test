@@ -1,47 +1,20 @@
-stages:
-  - build
-  - deploy
-
-variables:
-  DOCKER_DRIVER: overlay2
-  DOCKER_TLS_CERTDIR: ""
-
-# 🔸 Stage 1 — Build
-build:
-  stage: build
-  image: docker:24.0.7
-  services:
-    - docker:dind
-  script:
-    - echo ">>> Login to GitLab Registry"
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
-
-    - echo ">>> Build and push image with tag $CI_COMMIT_REF_NAME"
-    - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME" .
-    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME"
-
-    - echo "CURRENT_IMAGE=$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME" > image_tag.env
-  artifacts:
-    paths:
-      - image_tag.env
-    expire_in: 1h
-
-# 🔸 Stage 2 — Deploy
-deploy_dev:
+deploy_backend:
   stage: deploy
   tags:
     - lpu-test
   rules:
     - if: '$CI_COMMIT_REF_NAME == "dev"'
   before_script:
-    - source image_tag.env
-    - echo ">>> Подготавливаем .env для docker-compose"
-    - echo "CURRENT_IMAGE=${CURRENT_IMAGE}" > .env
-    - echo "CI_COMMIT_REF_NAME=${CI_COMMIT_REF_NAME}" >> .env
+    # Удаляем только backend-контейнер, если он уже есть
+    - echo ">>> Останавливаем и удаляем старый контейнер backend-${CI_COMMIT_REF_NAME}"
+    - docker rm -f backend-${CI_COMMIT_REF_NAME} 2>/dev/null || true
+
   script:
-    - echo ">>> Pull image"
-    - docker-compose -f docker-compose-dev.yml pull
-    - echo ">>> Up containers"
-    - docker-compose -f docker-compose-dev.yml up -d --remove-orphans
-    - echo ">>> Active containers"
-    - docker ps --filter "name=backend-${CI_COMMIT_REF_NAME}" --filter "name=redis-${CI_COMMIT_REF_NAME}"
+    - echo ">>> Сборка образа для backend"
+    - docker-compose -f docker-compose-dev.yml build backend
+
+    - echo ">>> Запуск только backend без остановки остальных сервисов"
+    - docker-compose -f docker-compose-dev.yml up -d --no-deps --remove-orphans backend
+
+    - echo ">>> Проверка запущенных контейнеров"
+    - docker ps --filter "name=backend-${CI_COMMIT_REF_NAME}"
