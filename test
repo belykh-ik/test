@@ -1,15 +1,14 @@
-version: "3.8"
-
-services:
-  edo-insurance-policy-impl:
-    image: nexus.sogaz.ru/edo-insurance-policy-impl:latest
-    volumes:
-      - /data/logs/eip-dev:/data/logs/eip-dev
-    container_name: edo-insurance-policy-impl-${CI_COMMIT_REF_NAME}
-    ports:
-      - "8094:8080"
-
-networks:
-  default:
-    external: true
-    name: server-edo-dev
+rollback-deploy:
+  stage: rollback
+  image: nexus.sogaz.ru/alpine/k8s:1.32.5
+  tags:
+    - k8s-stage
+  variables:
+    PROJECT_NAME: ${IMAGE_NAME}
+    K8S_NS: service-stage
+  script:
+    - mkdir -p /builds_dir/.kube
+    - echo "${KUBECONFIG_STAGE}" | base64 -d > /builds_dir/.kube/config
+    - kubectl rollout undo deployment/${PROJECT_NAME}-deployment --namespace ${K8S_NS} --kubeconfig /builds_dir/.kube/config
+  when: manual
+  allow_failure: false
