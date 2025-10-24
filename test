@@ -1,22 +1,3 @@
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: recognizer-ingress
-  namespace: service-test
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"  # если загружаешь большие файлы
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: s00-0000-1c38.sogaz.ru
-    http:
-      paths:
-      - path: /recognizer(/|$)(.*)
-        pathType: Prefix
-        backend:
-          service:
-            name: recognizer-service
-            port:
-              number: 5000
+curl -v -X POST http://s00-0000-1c38.sogaz.ru/recognizer/upload \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@test.xlsx"
