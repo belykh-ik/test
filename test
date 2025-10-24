@@ -1,21 +1,26 @@
-kubectl create secret generic rabbitmq-client-cert \
-  --from-file=client.p12=/path/to/your/file.p12 \
-  -n <namespace>
-
-
-
-volumes:
-  - name: rabbitmq-cert
-    secret:
-      secretName: rabbitmq-client-cert
-
-containers:
-  - name: app
-    image: your-image
-    volumeMounts:
-      - name: rabbitmq-cert
-        mountPath: /etc/certs
-        readOnly: true
-    env:
-      - name: RABBITMQ_CERT_PATH
-        value: "/etc/certs/client.p12"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  namespace: <namespace>
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: my-app
+          image: your-image:latest
+          volumeMounts:
+            - name: rabbitmq-cert
+              mountPath: /etc/cert/
+              readOnly: true
+      volumes:
+        - name: rabbitmq-cert
+          secret:
+            secretName: rabbitmq-client-cert
