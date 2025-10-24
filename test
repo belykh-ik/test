@@ -1,26 +1,7 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-  namespace: <namespace>
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: my-app
-  template:
-    metadata:
-      labels:
-        app: my-app
-    spec:
-      containers:
-        - name: my-app
-          image: your-image:latest
-          volumeMounts:
-            - name: rabbitmq-cert
-              mountPath: /etc/cert/
-              readOnly: true
-      volumes:
-        - name: rabbitmq-cert
-          secret:
-            secretName: rabbitmq-client-cert
+volumes:
+  - name: rabbitmq-cert
+    secret:
+      secretName: rabbitmq-client-cert
+      items:
+        - key: client.p12
+          path: rabbitmq.p12    # имя файла внутри контейнера
