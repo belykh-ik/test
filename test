@@ -1,3 +1,4 @@
-curl -v -X POST http://s00-0000-1c38.sogaz.ru/recognizer/upload \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@test.xlsx"
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      rewrite ^/upload(.*)$ /recognizer/upload$1 break;
