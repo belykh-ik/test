@@ -1,43 +1,22 @@
-rollback-previous:
-  stage: rollback
-  image: nexus.sogaz.ru/alpine/k8s:1.32.5
-  tags:
-    - k8s-stage
-  variables:
-    DEPLOYMENT_NAME: my-app
-    K8S_NS: service-stage
-  script:
-    - |
-      mkdir -p /builds_dir/.kube
-      echo "$KUBECONFIG_STAGE" | base64 -d > /builds_dir/.kube/config
-
-      kubectl get rs -n ${K8S_NS} -l app=${DEPLOYMENT_NAME} \
-        -o jsonpath='{range .items[*]}{.metadata.annotations.deployment\.kubernetes\.io/revision}{"\t"}{.spec.template.spec.containers[*].image}{"\n"}{end}' \
-        | sort -nr > rs_list.txt
-
-      echo "📜 История ревизий:"
-      cat rs_list.txt
-
-      CURRENT_REV=$(head -n 1 rs_list.txt | awk '{print $1}')
-      CURRENT_IMAGE=$(head -n 1 rs_list.txt | awk '{print $2}')
-      echo "🟡 Текущая ревизия: $CURRENT_REV ($CURRENT_IMAGE)"
-
-      PREV_REV=""
-      while read -r LINE; do
-        REV=$(echo "$LINE" | awk '{print $1}')
-        IMG=$(echo "$LINE" | awk '{print $2}')
-        if [ "$REV" != "$CURRENT_REV" ] && [ "$IMG" != "$CURRENT_IMAGE" ]; then
-          PREV_REV=$REV
-          break
-        fi
-      done < rs_list.txt
-
-      if [ -z "$PREV_REV" ]; then
-        echo "❌ Не найдена предыдущая ревизия с другим образом"
-        exit 1
-      fi
-
-      echo "✅ Найдена ревизия: $PREV_REV"
-      kubectl rollout undo deployment/${DEPLOYMENT_NAME} --to-revision=$PREV_REV -n ${K8S_NS} --kubeconfig /builds_dir/.kube/config
-      kubectl rollout status deployment/${DEPLOYMENT_NAME} -n ${K8S_NS} --kubeconfig /builds_dir/.kube/config
-  when: manual
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: recognizer-ingress
+  namespace: service-test
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"   # если файл может быть большим
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: s00-0000-1c38.sogaz.ru
+    http:
+      paths:
+      - path: /recognizer(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: recognizer-service
+            port:
+              number: 5000
