@@ -1,2 +1,21 @@
-kubectl apply -f ingress.yaml
-curl -v -X POST http://s00-0000-1c38.sogaz.ru/upload -F "file=@test.xlsx"
+kubectl create secret generic rabbitmq-client-cert \
+  --from-file=client.p12=/path/to/your/file.p12 \
+  -n <namespace>
+
+
+
+volumes:
+  - name: rabbitmq-cert
+    secret:
+      secretName: rabbitmq-client-cert
+
+containers:
+  - name: app
+    image: your-image
+    volumeMounts:
+      - name: rabbitmq-cert
+        mountPath: /etc/certs
+        readOnly: true
+    env:
+      - name: RABBITMQ_CERT_PATH
+        value: "/etc/certs/client.p12"
