@@ -1,4 +1,2 @@
-metadata:
-  annotations:
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      rewrite ^/upload(.*)$ /recognizer/upload$1 break;
+kubectl apply -f ingress.yaml
+curl -v -X POST http://s00-0000-1c38.sogaz.ru/upload -F "file=@test.xlsx"
