@@ -6,7 +6,7 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"   # если файл может быть большим
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"  # если загружаешь большие файлы
 spec:
   ingressClassName: nginx
   rules:
