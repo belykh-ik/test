@@ -1,3 +1,27 @@
-curl -v -X POST "https://s00-0000-1c38.sogaz.ru/recognizer/upload" \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@test.xlsx"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-service
+  namespace: <namespace>
+spec:
+  template:
+    spec:
+      containers:
+        - name: my-service
+          image: my-image:latest
+          volumeMounts:
+            - name: rabbitmq-cert-volume
+              mountPath: /app/certs
+              readOnly: true
+          env:
+            - name: RABBITMQ_SSL_KEYSTORE
+              value: "/app/certs/cert.p12"
+            - name: RABBITMQ_SSL_KEYSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-tls-cert-pass
+                  key: password
+      volumes:
+        - name: rabbitmq-cert-volume
+          secret:
+            secretName: rabbitmq-tls-cert
