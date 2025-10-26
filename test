@@ -1,26 +1,3 @@
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: document-recognizer-ingress
-  namespace: service-test
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
-spec:
-  ingressClassName: nginx
-  tls:
-  - hosts:
-    - s00-0000-1c38.sogaz.ru
-    secretName: document-recognizer-tls
-  rules:
-  - host: s00-0000-1c38.sogaz.ru
-    http:
-      paths:
-      - path: /recognizer(/|$)(.*)
-        pathType: Prefix
-        backend:
-          service:
-            name: document-recognizer-service
-            port:
-              number: 8080
+curl -v -X POST "https://s00-0000-1c38.sogaz.ru/recognizer/upload" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@test.xlsx"
