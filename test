@@ -1,1 +1,1 @@
-kubectl get svc <service-name> -n <namespace> -o yaml | grep -A 3 externalIPs
+unzip -p yourfile.jar META-INF/maven/*/*/pom.properties
