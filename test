@@ -1,1 +1,3 @@
-openssl s_client -connect <rabbit-host>:5671 | openssl x509 -noout -text | grep DNS
+kubectl set env deployment/<deployment-name> \
+  JAVA_TOOL_OPTIONS="-Djavax.net.debug=ssl,handshake" \
+  -n <namespace>
