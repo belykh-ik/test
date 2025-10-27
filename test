@@ -1,3 +1,1 @@
-docker cp <container_id>:/app/app.jar ./app.jar
-jar xf app.jar META-INF/maven/*/*/pom.properties
-cat META-INF/maven/*/*/pom.properties
+kubectl get svc <service-name> -n <namespace> -o yaml | grep -A 3 externalIPs
