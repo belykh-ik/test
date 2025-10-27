@@ -1,3 +1,1 @@
-- JAR_FILE=$(ls -t was-server/target/*.jar | head -n 1)
-- echo "Using $JAR_FILE"
-- docker build --build-arg JAR_FILE=$JAR_FILE -t myapp:$CI_COMMIT_SHORT_SHA .
+docker exec -it <container_id> unzip -p /app/app.jar META-INF/maven/*/*/pom.properties
