@@ -1,2 +1,1 @@
-docker run --rm -it <image_id> ls -lh /target
-# или ls -lh /app если ты копируешь туда
+sudo tcpdump -i any host <IP_RabbitMQ> and port 5672
