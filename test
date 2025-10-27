@@ -1,6 +1,1 @@
-- echo "📂 Путь сборки:"
-- pwd
-- echo "📂 Содержимое текущей директории:"
-- ls -lh
-- echo "📂 Рекурсивно ищем jar:"
-- find . -type f -name "*.jar" || true
+- mvn clean package -DskipTests
