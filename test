@@ -1,1 +1,6 @@
-sudo tcpdump -i any host <IP_RabbitMQ> and port 5672
+- echo "📂 Путь сборки:"
+- pwd
+- echo "📂 Содержимое текущей директории:"
+- ls -lh
+- echo "📂 Рекурсивно ищем jar:"
+- find . -type f -name "*.jar" || true
