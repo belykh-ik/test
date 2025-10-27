@@ -1,1 +1,3 @@
-docker exec -it <container_id> unzip -p /app/app.jar META-INF/maven/*/*/pom.properties
+docker cp <container_id>:/app/app.jar ./app.jar
+jar xf app.jar META-INF/maven/*/*/pom.properties
+cat META-INF/maven/*/*/pom.properties
