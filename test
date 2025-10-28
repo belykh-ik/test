@@ -1,1 +1,1 @@
-sudo ss -tuln | awk '{print $5}' | grep -Eo ':[0-9]+' | tr -d ':' | sort -n | awk '$1>=8000 && $1<=9000'
+docker-compose -p ${CI_COMMIT_REF_SLUG} up -d
