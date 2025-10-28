@@ -1,1 +1,1 @@
-openssl s_client -connect <rabbit-host>:5671 -showcerts
+sudo ss -tuln | awk '{print $5}' | grep -Eo ':[0-9]+' | tr -d ':' | sort -n | awk '$1>=8000 && $1<=9000'
