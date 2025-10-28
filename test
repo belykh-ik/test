@@ -1,1 +1,1 @@
-docker-compose -p ${CI_COMMIT_REF_SLUG} up -d
+docker ps --format "table {{.Names}}\t{{.RestartPolicy}}"
