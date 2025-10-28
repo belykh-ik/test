@@ -1,1 +1,1 @@
-unzip -p yourfile.jar META-INF/maven/*/*/pom.properties
+keytool -list -keystore truststore.p12 -storetype PKCS12 -storepass <пароль>
