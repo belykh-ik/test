@@ -1,1 +1,1 @@
-keytool -list -keystore truststore.p12 -storetype PKCS12 -storepass <пароль>
+openssl s_client -connect <rabbit-host>:5671 | openssl x509 -noout -text | grep DNS
