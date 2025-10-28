@@ -1,1 +1,1 @@
-openssl s_client -connect <rabbit-host>:5671 | openssl x509 -noout -text | grep DNS
+openssl s_client -connect <rabbit-host>:5671 -showcerts
