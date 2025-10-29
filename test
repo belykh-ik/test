@@ -1,1 +1,4 @@
-docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Ports}}" | grep 8085
+networks:
+  default:
+    name: net-${CI_COMMIT_REF_SLUG}
+    driver: bridge
