@@ -1,14 +1,8 @@
-deploy:
-  stage: deploy
-  script:
-    # 1️⃣ формируем имя сети из ветки
-    - export NET_NAME="server-${CI_COMMIT_REF_SLUG}"
-
-    # 2️⃣ создаём сеть, если её нет
-    - docker network create "$NET_NAME" || true
-
-    # 3️⃣ заменяем шаблон на реальное имя сети
-    - sed "s/server-PLACEHOLDER/${NET_NAME}/g" docker-compose.yml > docker-compose.gen.yml
-
-    # 4️⃣ поднимаем проект
-    - docker-compose -f docker-compose.gen.yml up -d
+script:
+  - echo "Поиск jar:"
+  - find . -type f -name "*.jar"
+  - export JAR_FILE=$(find . -type f -name "edo-data-mart-api-*.jar" | head -n 1)
+  - echo "Используем JAR_FILE=$JAR_FILE"
+  - ls -lh $JAR_FILE || (echo "❌ JAR не найден"; exit 1)
+  - echo "Запускаем docker build"
+  - docker build --build-arg JAR_FILE=$JAR_FILE -t $CURRENT_IMAGE .
