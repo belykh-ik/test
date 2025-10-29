@@ -1,4 +1,16 @@
-networks:
-  default:
-    name: net-${CI_COMMIT_REF_SLUG}
-    driver: bridge
+deploy:
+  stage: deploy
+  variables:
+    GIT_STRATEGY: clone
+  script:
+    # создаём имя сети из ветки
+    - export NET_NAME="server-${CI_COMMIT_REF_SLUG}"
+    
+    # создаём сеть, если её нет
+    - docker network create "$NET_NAME" || true
+    
+    # подставляем переменные в docker-compose
+    - envsubst < docker-compose.yml > docker-compose.gen.yml
+    
+    # поднимаем контейнеры
+    - docker-compose -f docker-compose.gen.yml up -d
