@@ -9,7 +9,8 @@ prepare_values:
     - jq --arg PIPELINE_ID "$CI_PIPELINE_ID" \
          '.app += { "pipeline_id": $PIPELINE_ID }' \
          "$HELM_CUSTOM_VALUES" > tmp && mv tmp "$HELM_CUSTOM_VALUES"
-    - echo "HELM_CUSTOM_VALUES=$HELM_CUSTOM_VALUES" >> helm.env
+    # ❗ Создаём helm.env без кавычек и пробелов
+    - echo "HELM_CUSTOM_VALUES=$HELM_CUSTOM_VALUES" > helm.env
   artifacts:
     paths:
       - values.custom.${CI_PIPELINE_ID}.json
