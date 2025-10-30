@@ -1,21 +1,8 @@
-include:
-  - project: devops/helm-template
-    ref: main
-    file: .gitlab-ci-templates/helm.gitlab-ci.yml
-
 variables:
-  HELM_RELEASE_NAME: my-service
-  HELM_CHART_PATH: ./charts/my-service
-  HELM_CUSTOM_VALUES: ./values.custom.json
+  HELM_CUSTOM_VALUES: ""  # пустое значение, будет переопределено
 
 deploy:
-  stage: deploy
   before_script:
-    # Подставляем динамические значения прямо в файл
-    - echo "🔧 Updating Helm values for pipeline $CI_PIPELINE_ID"
-    - jq --arg PIPELINE_ID "$CI_PIPELINE_ID" '.app += { "pipeline_id": $PIPELINE_ID }' values.custom.json > tmp && mv tmp values.custom.json
-
-    # Если нужно добавить динамические креденшелы или base64-сертификат:
-    # - echo "$CERT_P12_BASE64" | jq -R '{cert: .}' > tmp && jq -s '.[0] * .[1]' values.custom.json tmp > merged && mv merged values.custom.json
-
-    - cat values.custom.json  # debug
+    - export HELM_CUSTOM_VALUES="./values.custom.${CI_PIPELINE_ID}.json"
+    - cp values.custom.json "$HELM_CUSTOM_VALUES"
+    - jq --arg PIPELINE_ID "$CI_PIPELINE_ID" '.app += { "pipeline_id": $PIPELINE_ID }' "$HELM_CUSTOM_VALUES" > tmp && mv tmp "$HELM_CUSTOM_VALUES"
