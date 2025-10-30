@@ -1,16 +1,17 @@
-update_rabbitmq_secret:
-  stage: deploy
-  image: bitnami/kubectl:1.30
-  variables:
-    KUBE_NAMESPACE: service-dev
-    OLD_SECRET: rabbitmq-truststore
-    NEW_SECRET: rabbitmq-truststore-new
+prepare_values:
+  stage: pre
+  image: alpine:3.19
   script:
-    - echo "🔍 Получаем старый секрет $OLD_SECRET"
-    - DATA=$(kubectl get secret "$OLD_SECRET" -n "$KUBE_NAMESPACE" -o jsonpath='{.data.truststore\.p12}')
-    - echo "📦 Создаём новый секрет $NEW_SECRET"
-    - kubectl create secret generic "$NEW_SECRET" -n "$KUBE_NAMESPACE" \
-        --from-literal=truststore.p12="$DATA"
-    - echo "🗑️ Удаляем старый секрет $OLD_SECRET"
-    - kubectl delete secret "$OLD_SECRET" -n "$KUBE_NAMESPACE"
-    - echo "✅ Готово: создан $NEW_SECRET, удалён $OLD_SECRET"
+    - apk add --no-cache jq
+    - export HELM_CUSTOM_VALUES="./values.custom.${CI_PIPELINE_ID}.json"
+    - echo "🔧 Генерация $HELM_CUSTOM_VALUES"
+    - cp values.custom.json "$HELM_CUSTOM_VALUES"
+    - jq --arg PIPELINE_ID "$CI_PIPELINE_ID" \
+         '.app += { "pipeline_id": $PIPELINE_ID }' \
+         "$HELM_CUSTOM_VALUES" > tmp && mv tmp "$HELM_CUSTOM_VALUES"
+    - echo "HELM_CUSTOM_VALUES=$HELM_CUSTOM_VALUES" >> helm.env
+  artifacts:
+    paths:
+      - values.custom.${CI_PIPELINE_ID}.json
+    reports:
+      dotenv: helm.env
