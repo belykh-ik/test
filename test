@@ -1,3 +1,1 @@
-JAR_PATH=$(find . -type f -name 'edo-data-mart-api-*.jar' -print -quit)
-JAR_FILE=$(basename "$JAR_PATH")
-docker build --build-arg JAR_PATH="$JAR_PATH" --build-arg JAR_FILE="$JAR_FILE" -t "$CURRENT_IMAGE" .
+base64 -w0 truststore.p12 > truststore.p12.b64
