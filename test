@@ -1,1 +1,8 @@
-export KUBECONFIG=/builds_dir/.kube/config
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-p12-secret
+  namespace: my-namespace   # замените на нужный
+type: Opaque
+data:
+  mycert.p12: <BASE64_ЗДЕСЬ>
