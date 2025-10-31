@@ -1,24 +1,9 @@
-pre:
-  stage: pre
-  image: nexus.sogaz.ru/alpine/k8s:1.32.5
-  tags:
-    - Cargo-runner
-  variables:
-    KUBECONFIG_NEW_TEST: ${KUBECONFIG_NEW_TEST}
-  script:
-    - echo "Создаем secret p12"
-    - mkdir -p /builds_dir/.kube/
-    - echo "${KUBECONFIG_NEW_TEST}" | base64 -d > /builds_dir/.kube/config
-    - export KUBECONFIG=/builds_dir/.kube/config
-    - cat $SECRET_YML > secret.yml
-    - envsubst < ./k8s/dev/secret.yml | kubectl apply -f -
-    - echo "Создаем values.custom.json"
-    - cp ./values.custom.json ./values.custom.${CI_PIPELINE_ID}.json
-    # создаем env-файл с переменной
-    - echo "HELM_CUSTOM_VALUES_FILE=values.custom.${CI_PIPELINE_ID}.json" > helm.env
-  artifacts:
-    paths:
-      - values.custom.${CI_PIPELINE_ID}.json
-    reports:
-      dotenv: helm.env
-    expire_in: 1 hour
+if [ ! -f "$HELM_CUSTOM_VALUES_FILE" ]; then
+  echo "Файл $HELM_CUSTOM_VALUES_FILE не найден — создаю из custom.json"
+  envsubst < custom.json > "$HELM_CUSTOM_VALUES_FILE"
+else
+  echo "Файл $HELM_CUSTOM_VALUES_FILE существует — выполняю envsubst в безопасный временный файл"
+  tmp_file=$(mktemp)
+  envsubst < "$HELM_CUSTOM_VALUES_FILE" > "$tmp_file"
+  mv "$tmp_file" "$HELM_CUSTOM_VALUES_FILE"
+fi
