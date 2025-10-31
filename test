@@ -1,14 +1,18 @@
-generate_values:
+stages:
+  - .pre
+  - deploy
+
+prepare_values:
   stage: .pre
-  image: alpine:3.19
   script:
-    - apk add --no-cache coreutils
-    - export HELM_CUSTOM_VALUES_FILE="./values.custom.${CI_PIPELINE_ID}.json"
-    - cp ./values.custom.json "$HELM_CUSTOM_VALUES_FILE"
-    # Кодируем base64 и заменяем "=" на безопасный символ (например, "_")
-    - export HELM_VALUES_B64_SAFE=$(base64 -w0 "$HELM_CUSTOM_VALUES_FILE" | tr '=+' '_-')
-    - echo "HELM_VALUES_B64_SAFE=$HELM_VALUES_B64_SAFE" > helm.env
-    - echo "DEBUG: Base64 length ${#HELM_VALUES_B64_SAFE}"
+    - echo "📦 Готовим values файл"
+    - cp ./values.custom.json ./values.custom.${CI_PIPELINE_ID}.json
   artifacts:
-    reports:
-      dotenv: helm.env
+    paths:
+      - values.custom.${CI_PIPELINE_ID}.json
+    expire_in: 1 hour
+
+include:
+  - project: infrastructure/common/gitlab-ci
+    ref: master
+    file: /java/k8s/v100_site/.gitlab-ci.yml
