@@ -1,10 +1,5 @@
-generate_values:
-  stage: .pre
-  script:
-    - export HELM_CUSTOM_VALUES_FILE="./values.custom.${CI_PIPELINE_ID}.json"
-    - echo '{ "env": "dev" }' > "$HELM_CUSTOM_VALUES_FILE"
-    - export HELM_VALUES_B64=$(base64 -w0 "$HELM_CUSTOM_VALUES_FILE")
-    - echo "HELM_VALUES_B64=$HELM_VALUES_B64" >> helm.env
-  artifacts:
-    reports:
-      dotenv: helm.env
+before_script:
+  # Восстанавливаем файл из base64
+  - echo "$HELM_VALUES_B64" | base64 -d > ./values.custom.${CI_PIPELINE_ID}.json
+  - export HELM_CUSTOM_VALUES_FILE="./values.custom.${CI_PIPELINE_ID}.json"
+  - cat "$HELM_CUSTOM_VALUES_FILE"
