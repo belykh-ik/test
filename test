@@ -1,5 +1,1 @@
-kubectl create secret generic "${RABBIT_TRUST_SECRET}" \
-  --namespace="${KUBE_NAMESPACE}" \
-  --kubeconfig="/builds_dir/.kube/config" \
-  --from-file="truststore_rbt_lin.p12" \
-  --dry-run=client -o yaml | kubectl apply -f -
+export KUBECONFIG=/builds_dir/.kube/config
