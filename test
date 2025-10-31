@@ -1,17 +1,30 @@
 {
-  "extraVolumes": [
-    {
-      "name": "certs",
-      "secret": {
-        "secretName": "my-p12-secret"
+  "application": {
+    "extraVolumes": [
+      {
+        "name": "certs",
+        "secret": {
+          "secretName": "my-p12-secret"
+        }
+      },
+      {
+        "name": "data",
+        "hostPath": {
+          "path": "/opt/gitlab-runner-data",
+          "type": "Directory"
+        }
       }
-    }
-  ],
-  "extraVolumeMounts": [
-    {
-      "name": "certs",
-      "mountPath": "/etc/certs",
-      "readOnly": true
-    }
-  ]
+    ],
+    "extraVolumeMounts": [
+      {
+        "name": "certs",
+        "mountPath": "/etc/certs",
+        "readOnly": true
+      },
+      {
+        "name": "data",
+        "mountPath": "/data"
+      }
+    ]
+  }
 }
