@@ -1,18 +1,13 @@
-stages:
-  - .pre
-  - deploy
-
-prepare_values:
-  stage: .pre
-  script:
-    - echo "📦 Готовим values файл"
-    - cp ./values.custom.json ./values.custom.${CI_PIPELINE_ID}.json
-  artifacts:
-    paths:
-      - values.custom.${CI_PIPELINE_ID}.json
-    expire_in: 1 hour
-
-include:
-  - project: infrastructure/common/gitlab-ci
-    ref: master
-    file: /java/k8s/v100_site/.gitlab-ci.yml
+.deploy_base:
+  stage: deploy
+  needs:
+    - job: clone_ci_templates
+      artifacts: true
+      optional: true
+    - job: env
+      artifacts: true
+      optional: true
+    - job: test
+      artifacts: true
+      optional: true
+  image: $CI_REPO_DOCKER/devth/helm:v3.12.3
