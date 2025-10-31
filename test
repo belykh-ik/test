@@ -1,7 +1,10 @@
-deploy:
-  stage: deploy
-  needs:
-    - job: .pre
-      artifacts: true
+generate_values:
+  stage: .pre
   script:
-    - cat "$HELM_CUSTOM_VALUES_FILE"
+    - export HELM_CUSTOM_VALUES_FILE="./values.custom.${CI_PIPELINE_ID}.json"
+    - echo '{ "env": "dev" }' > "$HELM_CUSTOM_VALUES_FILE"
+    - export HELM_VALUES_B64=$(base64 -w0 "$HELM_CUSTOM_VALUES_FILE")
+    - echo "HELM_VALUES_B64=$HELM_VALUES_B64" >> helm.env
+  artifacts:
+    reports:
+      dotenv: helm.env
