@@ -1,16 +1,14 @@
 prepare_values:
-  stage: pre
+  stage: .pre
   image: alpine:3.19
   script:
-    - apk add --no-cache jq
-    - export HELM_CUSTOM_VALUES="./values.custom.${CI_PIPELINE_ID}.json"
-    - echo "🔧 Генерация $HELM_CUSTOM_VALUES"
-    - cp values.custom.json "$HELM_CUSTOM_VALUES"
-    - jq --arg PIPELINE_ID "$CI_PIPELINE_ID" \
-         '.app += { "pipeline_id": $PIPELINE_ID }' \
-         "$HELM_CUSTOM_VALUES" > tmp && mv tmp "$HELM_CUSTOM_VALUES"
-    # ❗ Создаём helm.env без кавычек и пробелов
-    - echo "HELM_CUSTOM_VALUES=$HELM_CUSTOM_VALUES" > helm.env
+    - apk add --no-cache jq gettext
+    - echo "$CERT_P12_B64" | base64 -d > truststore.p12
+    - kubectl create secret generic rabbitmq-truststore \
+        --from-file=truststore.p12 -n service-dev --dry-run=client -o yaml | kubectl apply -f -
+    - export HELM_CUSTOM_VALUES_FILE="./values.custom.${CI_PIPELINE_ID}.json"
+    - envsubst < custom.json > "${HELM_CUSTOM_VALUES_FILE}"
+    - echo "HELM_CUSTOM_VALUES_FILE=${HELM_CUSTOM_VALUES_FILE}" > helm.env
   artifacts:
     paths:
       - values.custom.${CI_PIPELINE_ID}.json
