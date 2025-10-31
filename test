@@ -1,1 +1,7 @@
-:5,10s/foo/bar/g
+deploy:
+  stage: deploy
+  needs:
+    - job: .pre
+      artifacts: true
+  script:
+    - cat "$HELM_CUSTOM_VALUES_FILE"
