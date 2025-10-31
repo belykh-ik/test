@@ -1,5 +1,1 @@
-if [ ! -f "$HELM_CUSTOM_VALUES_FILE" ]; then
-  envsubst < values.template.json > "$HELM_CUSTOM_VALUES_FILE"
-else
-  echo "ℹ️ Файл $HELM_CUSTOM_VALUES_FILE уже существует — пропускаю генерацию"
-fi
+:5,10s/foo/bar/g
