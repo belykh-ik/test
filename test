@@ -1,5 +1,13 @@
 before_script:
-  # Восстанавливаем файл из base64
-  - echo "$HELM_VALUES_B64" | base64 -d > ./values.custom.${CI_PIPELINE_ID}.json
-  - export HELM_CUSTOM_VALUES_FILE="./values.custom.${CI_PIPELINE_ID}.json"
-  - cat "$HELM_CUSTOM_VALUES_FILE"
+  - |
+    export HELM_CUSTOM_VALUES_FILE="./values.custom.${CI_PIPELINE_ID}.json"
+
+    if [ -f "$HELM_CUSTOM_VALUES_FILE" ]; then
+      echo "✅ Используем локальный файл $HELM_CUSTOM_VALUES_FILE"
+    else
+      echo "⚙️ Файл не найден, восстанавливаем из Base64 переменной"
+      echo "$HELM_VALUES_B64" | base64 -d > "$HELM_CUSTOM_VALUES_FILE"
+    fi
+
+    echo "📄 Содержимое файла:"
+    cat "$HELM_CUSTOM_VALUES_FILE"
