@@ -1,8 +1,17 @@
-apiVersion: v1
-kind: Secret
-metadata:
-  name: my-p12-secret
-  namespace: my-namespace   # замените на нужный
-type: Opaque
-data:
-  mycert.p12: <BASE64_ЗДЕСЬ>
+{
+  "extraVolumes": [
+    {
+      "name": "certs",
+      "secret": {
+        "secretName": "my-p12-secret"
+      }
+    }
+  ],
+  "extraVolumeMounts": [
+    {
+      "name": "certs",
+      "mountPath": "/etc/certs",
+      "readOnly": true
+    }
+  ]
+}
