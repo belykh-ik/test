@@ -1,9 +1,1 @@
-git rebase --abort || true
-git merge --abort || true
-rm -rf .git/rebase-* .git/MERGE_HEAD .git/CHERRY_PICK_HEAD .git/REBASE_HEAD
-git fetch --prune origin
-git gc --prune=now
-git reflog expire --expire=now --all
-git fsck --full
-git checkout feature/твоя-ветка
-git rebase -i "HEAD~10"
+git show -s --format=%p HEAD
