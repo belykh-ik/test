@@ -1,9 +1,2 @@
-if [ ! -f "$HELM_CUSTOM_VALUES_FILE" ]; then
-  echo "Файл $HELM_CUSTOM_VALUES_FILE не найден — создаю из custom.json"
-  envsubst < custom.json > "$HELM_CUSTOM_VALUES_FILE"
-else
-  echo "Файл $HELM_CUSTOM_VALUES_FILE существует — выполняю envsubst в безопасный временный файл"
-  tmp_file=$(mktemp)
-  envsubst < "$HELM_CUSTOM_VALUES_FILE" > "$tmp_file"
-  mv "$tmp_file" "$HELM_CUSTOM_VALUES_FILE"
-fi
+git reset --soft $(git merge-base HEAD origin/develop)
+git commit -m "squash: объединено всё в один коммит"
