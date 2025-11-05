@@ -1,1 +1,4 @@
-git show -s --format=%p HEAD
+script:
+  - ARTIFACT_PATH="edo/target/edo.jar"
+  - ARTIFACT_PATH="${ARTIFACT_PATH#edo/}"
+  - echo "Новый путь: $ARTIFACT_PATH"
