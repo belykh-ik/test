@@ -1,4 +1,1 @@
-script:
-  - ARTIFACT_PATH="edo/target/edo.jar"
-  - ARTIFACT_PATH="${ARTIFACT_PATH#edo/}"
-  - echo "Новый путь: $ARTIFACT_PATH"
+ansible all -i inventory -m file -a "path=/tmp/releases state=directory mode=0755" --become
