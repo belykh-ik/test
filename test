@@ -1,1 +1,1 @@
-watch -n1 "hostname; ip a | grep -w <VIP>; ss -tn state established | grep <VIP>"
+ss -tn state established | grep <VIP>
