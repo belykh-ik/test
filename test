@@ -1,1 +1,1 @@
-watch -n1 "hostname; ip a | grep -w <VIP>"
+watch -n1 'echo -n "$(hostname)  ->  "; journalctl -u keepalived -n1 2>/dev/null | grep -oE "MASTER|BACKUP"'
