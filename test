@@ -1,1 +1,1 @@
-systemctl list-unit-files | grep keepalived
+watch -n1 "hostname; ip a | grep -w <VIP>"
