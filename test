@@ -1,1 +1,1 @@
-ansible all -i inventory -m file -a "path=/tmp/releases state=directory mode=0755" --become
+systemctl list-unit-files | grep keepalived
