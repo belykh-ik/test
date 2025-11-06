@@ -1,1 +1,1 @@
-find ./kubespray -type f -name "download.yml"
+/var/lib/gitlab-runner/cache/<project_id>/<ENVIRONMENT>/edo/test/edo.jar
