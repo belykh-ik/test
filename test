@@ -1,2 +1,1 @@
-VIP="10.10.10.200"; IFACE="ens192"
-watch -n1 'hostname; ip a show dev '"$IFACE"' | grep -w "'"$VIP"'" && echo MASTER || echo BACKUP'
+journalctl -u keepalived | grep -i "MASTER\|BACKUP"
