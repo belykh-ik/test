@@ -1,1 +1,117 @@
-/var/lib/gitlab-runner/cache/<project_id>/<ENVIRONMENT>/edo/test/edo.jar
+#!/usr/bin/env bash
+set -e
+
+NS="smoke-test"
+
+echo "[1] Проверка подключения к кластеру"
+kubectl cluster-info
+kubectl version --short
+
+echo "[2] Проверка статуса ноды"
+kubectl get nodes -o wide
+kubectl describe node $(kubectl get nodes -o name) | grep -E 'Taints:|Pressure|Allocatable|Capacity'
+
+echo "[3] Системные поды"
+kubectl get pods -n kube-system -o wide
+
+echo "[4] Снятие taint с control-plane (если один узел)"
+kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true
+kubectl taint nodes --all node-role.kubernetes.io/master- || true
+
+echo "[5] Создание неймспейса"
+kubectl delete ns $NS --ignore-not-found=true
+kubectl create ns $NS
+
+echo "[6] Разворачиваем тестовое приложение"
+kubectl -n $NS create deploy hello --image=nginxdemos/hello --replicas=2
+kubectl -n $NS rollout status deploy/hello
+
+echo "[7] Создаём ClusterIP Service"
+kubectl -n $NS expose deploy hello --port=80 --target-port=80
+kubectl -n $NS get svc,pods -o wide
+
+echo "[8] Проверка DNS и доступа внутри кластера"
+kubectl -n $NS run curl --image=radial/busyboxplus:curl -it --rm -- \
+  sh -c "nslookup hello && curl -sS http://hello" || true
+
+echo "[9] Создаём NodePort Service"
+kubectl -n $NS expose deploy hello --name=hello-np --type=NodePort --port=80 --target-port=80
+NODE_PORT=$(kubectl -n $NS get svc hello-np -o jsonpath='{.spec.ports[0].nodePort}')
+NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+echo "NodePort доступен по: http://$NODE_IP:$NODE_PORT"
+
+echo "[10] Проверка NodePort локально"
+curl -sS http://127.0.0.1:$NODE_PORT | head || true
+
+echo "[11] Проверка StorageClass"
+kubectl get sc || true
+
+echo "[12] Проверка PVC (если есть StorageClass по умолчанию)"
+DEFAULT_SC=$(kubectl get sc 2>/dev/null | grep "(default)" | awk '{print $1}' || true)
+if [[ -n "$DEFAULT_SC" ]]; then
+echo "[+] Создаем PVC и pod"
+cat <<EOF | kubectl -n $NS apply -f -
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pvc
+spec:
+  storageClassName: $DEFAULT_SC
+  accessModes: [ "ReadWriteOnce" ]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pvc-tester
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh","-c","echo SUCCESS > /data/out && sleep 30"]
+    volumeMounts:
+    - name: data
+      mountPath: /data
+  volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: test-pvc
+EOF
+kubectl -n $NS wait --for=condition=Ready pod/pvc-tester --timeout=60s || true
+kubectl -n $NS exec pvc-tester -- cat /data/out || true
+else
+echo "[!] Нет StorageClass по умолчанию — пропускаем PVC тест"
+fi
+
+echo "[13] Проверка Ingress (если есть ingress-nginx)"
+if kubectl get ns ingress-nginx >/dev/null 2>&1; then
+cat <<EOF | kubectl -n $NS apply -f -
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hello
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: hello.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: hello
+            port:
+              number: 80
+EOF
+echo "[+] Добавь в /etc/hosts: $NODE_IP hello.local"
+echo "Потом проверь: curl -H 'Host: hello.local' http://$NODE_IP/"
+else
+echo "[!] Ingress не установлен — проверка пропущена"
+fi
+
+echo ""
+echo "=== Готово! ==="
+echo "Если всё прошло без ошибок — кластер рабочий."
