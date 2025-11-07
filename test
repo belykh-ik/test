@@ -1,2 +1,5 @@
-echo "DNS:" && kubectl -n $NS run dns-test --rm -it --image=busybox:1.35 -- nslookup hello && \
-echo "HTTP:" && kubectl -n $NS run http-test --rm -it --image=curlimages/curl -- curl -sS http://hello
+kubectl get pods -n kube-system -o wide
+kubectl logs -n kube-system -l k8s-app=kube-proxy --tail=30
+kubectl -n kube-system logs -l k8s-app=kube-proxy | grep -i mode
+sudo ss -ltnp | grep $(kubectl -n smoke-test get svc hello-np -o jsonpath='{.spec.ports[0].nodePort}')
+sudo update-alternatives --display iptables
