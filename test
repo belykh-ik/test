@@ -1,1 +1,1 @@
-kubectl get pods -n kube-system -o wide | grep -E 'calico|flannel|cilium'
+kubectl logs -n kube-system -l k8s-app=kube-proxy --all-containers=true --tail=200
