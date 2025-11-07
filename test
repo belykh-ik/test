@@ -1,1 +1,1 @@
-kubectl get configmap kube-proxy -n kube-system -o yaml | grep -i mode -A2
+# yaml-language-server: $schema=ignore
