@@ -1,5 +1,32 @@
-kubectl get pods -n kube-system -o wide
-kubectl logs -n kube-system -l k8s-app=kube-proxy --tail=30
-kubectl -n kube-system logs -l k8s-app=kube-proxy | grep -i mode
-sudo ss -ltnp | grep $(kubectl -n smoke-test get svc hello-np -o jsonpath='{.spec.ports[0].nodePort}')
+#!/usr/bin/env bash
+
+# === Проверка и переключение iptables на legacy ===
+# kube-proxy в k8s 1.32 может работать в iptables-legacy,
+# а если в системе включён nftables — NodePort не будет работать.
+
+echo "[+] Проверяем текущий iptables режим"
 sudo update-alternatives --display iptables
+
+echo "[+] Переключаем iptables на legacy (если nft активно)"
+sudo update-alternatives --set iptables /usr/sbin/iptables-legacy || true
+sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy || true
+
+# Перезапускаем containerd и kubelet, чтобы подхватили правила
+echo "[+] Перезапуск containerd и kubelet"
+sudo systemctl restart containerd
+sudo systemctl restart kubelet
+
+# === Отключение firewall ===
+# firewalld / ufw часто блокируют трафик NodePort.
+
+echo "[+] Проверяем firewall (firewalld / ufw)"
+
+# Остановка firewalld, если он есть
+sudo systemctl stop firewalld 2>/dev/null || true
+
+# Отключение ufw, если включен
+sudo ufw disable 2>/dev/null || true
+
+echo "[+] Готово. NodePort должен заработать."
+echo "Теперь заново проверь:"
+echo "curl -sS http://127.0.0.1:<NodePort>"
