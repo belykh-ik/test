@@ -3,53 +3,60 @@ set -e
 
 NS="smoke-test"
 
-echo "[1] Проверка подключения к кластеру"
+echo "=== [1] Проверка доступа к кластеру ==="
 kubectl cluster-info
-kubectl version --short
+kubectl version --output=yaml
 
-echo "[2] Проверка статуса ноды"
+echo "=== [2] Проверка ноды ==="
 kubectl get nodes -o wide
-kubectl describe node $(kubectl get nodes -o name) | grep -E 'Taints:|Pressure|Allocatable|Capacity'
 
-echo "[3] Системные поды"
+NODE=$(kubectl get nodes --no-headers | awk '{print $1}')
+echo "Используем ноду: $NODE"
+
+echo "--- Taints и ресурсы ---"
+kubectl describe node "$NODE" | grep -E 'Taints:|Pressure|Allocatable|Capacity' || true
+
+echo "=== [3] Снятие taint для single-node control-plane ==="
+kubectl taint nodes "$NODE" node-role.kubernetes.io/control-plane- || true
+
+echo "=== [4] kube-system pods ==="
 kubectl get pods -n kube-system -o wide
 
-echo "[4] Снятие taint с control-plane (если один узел)"
-kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true
-kubectl taint nodes --all node-role.kubernetes.io/master- || true
-
-echo "[5] Создание неймспейса"
+echo "=== [5] Создаём тестовый namespace ==="
 kubectl delete ns $NS --ignore-not-found=true
 kubectl create ns $NS
 
-echo "[6] Разворачиваем тестовое приложение"
+echo "=== [6] Деплой тестового приложения ==="
 kubectl -n $NS create deploy hello --image=nginxdemos/hello --replicas=2
 kubectl -n $NS rollout status deploy/hello
 
-echo "[7] Создаём ClusterIP Service"
+echo "=== [7] ClusterIP Service ==="
 kubectl -n $NS expose deploy hello --port=80 --target-port=80
 kubectl -n $NS get svc,pods -o wide
 
-echo "[8] Проверка DNS и доступа внутри кластера"
-kubectl -n $NS run curl --image=radial/busyboxplus:curl -it --rm -- \
-  sh -c "nslookup hello && curl -sS http://hello" || true
+echo "=== [8] Проверка DNS + доступа внутри кластера ==="
+kubectl -n $NS run curl --image=curlimages/curl -it --rm -- \
+  sh -c "apk add bind-tools >/dev/null && \
+  echo '→ DNS:' && nslookup hello && \
+  echo '→ HTTP:' && curl -sS http://hello" || true
 
-echo "[9] Создаём NodePort Service"
+echo "=== [9] NodePort Service ==="
 kubectl -n $NS expose deploy hello --name=hello-np --type=NodePort --port=80 --target-port=80
+
 NODE_PORT=$(kubectl -n $NS get svc hello-np -o jsonpath='{.spec.ports[0].nodePort}')
 NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
-echo "NodePort доступен по: http://$NODE_IP:$NODE_PORT"
 
-echo "[10] Проверка NodePort локально"
+echo "Проверка NodePort: http://$NODE_IP:$NODE_PORT"
 curl -sS http://127.0.0.1:$NODE_PORT | head || true
 
-echo "[11] Проверка StorageClass"
+echo "=== [10] Проверка StorageClass ==="
 kubectl get sc || true
 
-echo "[12] Проверка PVC (если есть StorageClass по умолчанию)"
 DEFAULT_SC=$(kubectl get sc 2>/dev/null | grep "(default)" | awk '{print $1}' || true)
+
 if [[ -n "$DEFAULT_SC" ]]; then
-echo "[+] Создаем PVC и pod"
+echo "→ Default StorageClass: $DEFAULT_SC"
+
 cat <<EOF | kubectl -n $NS apply -f -
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -57,7 +64,7 @@ metadata:
   name: test-pvc
 spec:
   storageClassName: $DEFAULT_SC
-  accessModes: [ "ReadWriteOnce" ]
+  accessModes: ["ReadWriteOnce"]
   resources:
     requests:
       storage: 1Gi
@@ -70,7 +77,7 @@ spec:
   containers:
   - name: app
     image: busybox
-    command: ["sh","-c","echo SUCCESS > /data/out && sleep 30"]
+    command: ["sh","-c","echo SUCCESS > /data/out && sleep 20"]
     volumeMounts:
     - name: data
       mountPath: /data
@@ -79,14 +86,19 @@ spec:
     persistentVolumeClaim:
       claimName: test-pvc
 EOF
+
 kubectl -n $NS wait --for=condition=Ready pod/pvc-tester --timeout=60s || true
+echo "Содержимое PVC:"
 kubectl -n $NS exec pvc-tester -- cat /data/out || true
+
 else
-echo "[!] Нет StorageClass по умолчанию — пропускаем PVC тест"
+echo "→ Нет default StorageClass — пропускаем проверку PVC"
 fi
 
-echo "[13] Проверка Ingress (если есть ingress-nginx)"
+echo "=== [11] Проверка Ingress (если установлен ingress-nginx) ==="
 if kubectl get ns ingress-nginx >/dev/null 2>&1; then
+echo "Ingress найден — проверяем"
+
 cat <<EOF | kubectl -n $NS apply -f -
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -106,12 +118,15 @@ spec:
             port:
               number: 80
 EOF
-echo "[+] Добавь в /etc/hosts: $NODE_IP hello.local"
-echo "Потом проверь: curl -H 'Host: hello.local' http://$NODE_IP/"
+
+echo "Добавь в /etc/hosts:"
+echo "$NODE_IP hello.local"
+echo "Проверь:"
+echo "curl -H 'Host: hello.local' http://$NODE_IP/"
 else
-echo "[!] Ingress не установлен — проверка пропущена"
+echo "→ Ingress не установлен — пропущено"
 fi
 
 echo ""
-echo "=== Готово! ==="
-echo "Если всё прошло без ошибок — кластер рабочий."
+echo "✅ Проверка завершена."
+echo "Если ошибок не было — кластер работает корректно."
