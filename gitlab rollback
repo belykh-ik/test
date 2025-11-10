@@ -1,0 +1,144 @@
+# Джоба ручного отката Helm до предыдущей УСПЕШНОЙ ревизии
+rollback:
+  stage: deploy
+  when: manual                # запуск только вручную
+  allow_failure: false        # не пропускаем ошибки
+  # Образ содержит helm и kubectl (официальный от GitLab CI для кластерной интеграции)
+  image: registry.gitlab.com/gitlab-org/cluster-integration/helm-kubectl:latest
+
+  # ВАЖНО: определи эти переменные в CI/CD Settings (Repository variables) или в group-level
+  variables:
+    # Имя Helm-релиза (обычно base-name + ветка)
+    RELEASE_NAME: "$CI_PROJECT_NAME-$CI_COMMIT_REF_SLUG"   # <-- подстрой под вашу схему именования
+    # Namespace, куда деплоится релиз
+    RELEASE_NAMESPACE: "default"                           # <-- впиши целевой namespace
+    # Таймаут ожидания готовности ресурсов при rollback
+    HELM_TIMEOUT: "5m"
+    # (опц.) Явный таргет-ревижн для отката; по умолчанию найдем последний успешный
+    ROLLBACK_TO: ""
+    # Имена переменных с kubeconfig для разных веток:
+    # Пример: для ветки feature/login создать переменную KUBECONFIG_FEATURE_LOGIN_B64 с base64 kubeconfig
+    # Если не найдется специфичная — возьмем KUBECONFIG_B64 (общая)
+    KUBECONFIG_DEFAULT_VAR: "KUBECONFIG_B64"
+
+  # Права контейнера (на всякий случай)
+  before_script:
+    - set -Eeuo pipefail
+
+    # --- [KUBECONFIG] Подхват kubeconfig из переменных GitLab ---
+    # Ожидается, что kubeconfig хранится в виде base64 в переменной:
+    #   - KUBECONFIG_<CI_COMMIT_REF_SLUG_UPPER>_B64  ИЛИ
+    #   - KUBECONFIG_B64 (дефолт)
+    - |
+      echo "# Определяем имя переменной kubeconfig для текущей ветки" 1>&2
+      REF_UPPER=$(echo "$CI_COMMIT_REF_SLUG" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+      CANDIDATE_VAR="KUBECONFIG_${REF_UPPER}_B64"
+      echo "# Пробуем: ${CANDIDATE_VAR}" 1>&2
+      if printenv "${CANDIDATE_VAR}" >/dev/null 2>&1 && [ -n "$(printenv ${CANDIDATE_VAR})" ]; then
+        KUBECONFIG_B64="$(printenv ${CANDIDATE_VAR})"
+      elif printenv "${KUBECONFIG_DEFAULT_VAR}" >/dev/null 2>&1 && [ -n "$(printenv ${KUBECONFIG_DEFAULT_VAR})" ]; then
+        KUBECONFIG_B64="$(printenv ${KUBECONFIG_DEFAULT_VAR})"
+      else
+        echo "❌ kubeconfig переменная не найдена. Задай ${CANDIDATE_VAR} или ${KUBECONFIG_DEFAULT_VAR}" >&2
+        exit 1
+      fi
+
+      echo "# Пишем kubeconfig во временный файл"
+      echo "$KUBECONFIG_B64" | base64 -d > /tmp/kubeconfig
+      export KUBECONFIG=/tmp/kubeconfig
+
+    # --- Проверка доступа к кластеру ---
+    - echo "# Проверяем доступ к кластеру"
+    - kubectl version --request-timeout=15s
+    - kubectl get ns
+
+    # --- Проверка наличия релиза ---
+    - echo "# Проверяем, что релиз существует: ${RELEASE_NAME} в ${RELEASE_NAMESPACE}"
+    - |
+      if ! helm status "${RELEASE_NAME}" -n "${RELEASE_NAMESPACE}" >/dev/null 2>&1; then
+        echo "❌ Helm-релиз '${RELEASE_NAME}' не найден в namespace '${RELEASE_NAMESPACE}'" >&2
+        echo "# Подсказка: проверь RELEASE_NAME / RELEASE_NAMESPACE и историю деплоя." >&2
+        exit 1
+      fi
+
+  script:
+    # --- Определяем целевую ревизию для отката ---
+    - |
+      echo "# Определяем целевую ревизию для rollback"
+      if [ -n "${ROLLBACK_TO}" ]; then
+        TARGET_REV="${ROLLBACK_TO}"
+        echo "# Явно задана ревизия: ${TARGET_REV}"
+      else
+        # Берем ПОСЛЕДНЮЮ УСПЕШНУЮ (STATUS=deployed) ревизию, но НЕ текущую.
+        # Парсим таблицу 'helm history' без jq, оставляя последнюю подходящую строку.
+        echo "# Ищем предыдущую успешную ревизию (status=deployed)"
+        CURRENT_REV=$(helm history "${RELEASE_NAME}" -n "${RELEASE_NAMESPACE}" | awk 'NR>1 && $3 ~ /deployed/ {rev=$1} END{print rev}')
+        # CURRENT_REV здесь будет последняя УСПЕШНАЯ (обычно текущая). Нужно взять предыдущую УСПЕШНУЮ:
+        # Получим все успешные ревизии в порядке, и возьмем предпоследнюю.
+        mapfile -t DEPLOYED_REVS < <(helm history "${RELEASE_NAME}" -n "${RELEASE_NAMESPACE}" | awk 'NR>1 && $3 ~ /deployed/ {print $1}')
+        if [ "${#DEPLOYED_REVS[@]}" -lt 2 ]; then
+          echo "❌ Недостаточно успешных ревизий для отката (нужно минимум 2). Проверь helm history." >&2
+          helm history "${RELEASE_NAME}" -n "${RELEASE_NAMESPACE}" || true
+          exit 1
+        fi
+        TARGET_REV="${DEPLOYED_REVS[${#DEPLOYED_REVS[@]}-2]}"
+        echo "# Найдена предыдущая успешная ревизия: ${TARGET_REV}"
+      fi
+
+      # Доп.проверка: ревизия существует
+      if ! helm history "${RELEASE_NAME}" -n "${RELEASE_NAMESPACE}" | awk -v r="${TARGET_REV}" 'NR>1 { if ($1==r) found=1 } END{ exit (found?0:1)}'; then
+        echo "❌ Ревизия ${TARGET_REV} не найдена в истории релиза." >&2
+        helm history "${RELEASE_NAME}" -n "${RELEASE_NAMESPACE}" || true
+        exit 1
+      fi
+
+    # --- Делаем откат ---
+    - |
+      echo "# Запускаем helm rollback на ревизию ${TARGET_REV} (with --wait --timeout=${HELM_TIMEOUT})"
+      # ВКЛЮЧАЕМ флаг --cleanup-on-fail чтобы не оставить кривое состояние, если rollback не прошёл
+      # (поддерживается в Helm 3.9+ для upgrade/rollback)
+      set +e
+      helm rollback "${RELEASE_NAME}" "${TARGET_REV}" -n "${RELEASE_NAMESPACE}" --wait --timeout "${HELM_TIMEOUT}" --cleanup-on-fail
+      RC=$?
+      set -e
+      if [ $RC -ne 0 ]; then
+        echo "❌ helm rollback вернул ошибку (rc=$RC)" >&2
+        echo "# Статус релиза после ошибки:" >&2
+        helm status "${RELEASE_NAME}" -n "${RELEASE_NAMESPACE}" || true
+        echo "# События в namespace (последние 100):" >&2
+        kubectl get events -n "${RELEASE_NAMESPACE}" --sort-by=.lastTimestamp | tail -n 100 || true
+        exit $RC
+      fi
+
+    # --- Верификация после отката ---
+    - echo "# Статус релиза после rollback:"
+    - helm status "${RELEASE_NAME}" -n "${RELEASE_NAMESPACE}" || true
+
+    # Если чарты корректно размечают ресурсы (как большинство), у них есть label app.kubernetes.io/instance=<release>
+    # Попытаемся подождать rollout вручную как дополнительная гарантия.
+    - |
+      echo "# Доп.проверка rollout (deployments/statefulsets) по лейблу app.kubernetes.io/instance=${RELEASE_NAME}"
+      SEL="app.kubernetes.io/instance=${RELEASE_NAME}"
+      DEPLOYS=$(kubectl -n "${RELEASE_NAMESPACE}" get deploy -l "${SEL}" -o name || true)
+      STS=$(kubectl -n "${RELEASE_NAMESPACE}" get sts -l "${SEL}" -o name || true)
+      if [ -z "$DEPLOYS$STS" ]; then
+        echo "# ⚠️ Не нашли ресурсы по лейблу ${SEL}. Пропускаем ручной rollout-check. Полагаемся на --wait Helm."
+      else
+        for d in $DEPLOYS; do
+          echo "# Ждем готовности $d"
+          kubectl -n "${RELEASE_NAMESPACE}" rollout status "$d" --timeout="${HELM_TIMEOUT}" || exit 1
+        done
+        for s in $STS; do
+          echo "# Ждем готовности $s"
+          kubectl -n "${RELEASE_NAMESPACE}" rollout status "$s" --timeout="${HELM_TIMEOUT}" || exit 1
+        done
+      fi
+
+    - echo "✅ Rollback завершён успешно."
+
+  # Полезно ограничить, чтобы джоба была доступна только для релевантных веток/тегов
+  rules:
+    - if: '$CI_COMMIT_BRANCH'        # включено для всех веток; подстрой при необходимости
+      when: manual
+    - if: '$CI_COMMIT_TAG'           # можно разрешить и для тегов
+      when: manual
