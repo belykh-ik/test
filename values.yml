@@ -1,0 +1,33 @@
+image:
+  repository: nexus.sogaz.ru:8083/your-repo/your-app
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: nexus-regcred
+
+replicaCount: 1
+
+resources: {}
+# resources:
+#   limits:
+#     cpu: 500m
+#     memory: 512Mi
+#   requests:
+#     cpu: 100m
+#     memory: 128Mi
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: myapp.sogaz.ru
+  path: /
+  pathType: Prefix
+
+env:
+  JAVA_OPTS: "-Xms128m -Xmx512m"
