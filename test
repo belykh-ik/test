@@ -1,1 +1,7 @@
-helm upgrade --install my-app ./chart -n my-namespace
+{{- define "chart.name" -}}
+{{ .Chart.Name }}
+{{- end }}
+
+{{- define "chart.fullname" -}}
+{{ .Release.Name }}-{{ .Chart.Name }}
+{{- end }}
