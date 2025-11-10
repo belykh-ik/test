@@ -1,7 +1,3 @@
-{{- define "chart.name" -}}
-{{ .Chart.Name }}
-{{- end }}
+#!/bin/sh
 
-{{- define "chart.fullname" -}}
-{{ .Release.Name }}-{{ .Chart.Name }}
-{{- end }}
+echo "Hello from POSIX shell"
