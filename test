@@ -1,6 +1,1 @@
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-  endpoint = ["https://nexus.sogaz.ru:8083"]
-
-# Если Nexus использует self-signed сертификат:
-[plugins."io.containerd.grpc.v1.cri".registry.configs."nexus.sogaz.ru:8083".tls]
-  insecure_skip_verify = true
+helm upgrade --install my-app ./chart -n my-namespace
