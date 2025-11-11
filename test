@@ -1,20 +1,9 @@
-build-backend:
+docker-build:
   stage: build
   rules:
-    # Если это Merge Request и есть изменения → запустить
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - backend/**/*
+    - if: $CI_COMMIT_TAG
       when: always
-
-    # Если это push в ветку и есть изменения → тоже запустить
-    - if: $CI_COMMIT_BRANCH
-      changes:
-        - backend/**/*
-      when: always
-
-    # Иначе не запускать
     - when: never
-
   script:
-    - ./build_backend.sh
+    - docker build -t registry/app:$CI_COMMIT_TAG .
+    - docker push registry/app:$CI_COMMIT_TAG
