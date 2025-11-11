@@ -1,3 +1,5 @@
-#!/bin/sh
-
-echo "Hello from POSIX shell"
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: always
+    - when: never
