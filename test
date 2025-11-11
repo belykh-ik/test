@@ -1,5 +1,20 @@
-workflow:
+build-backend:
+  stage: build
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    # Если это Merge Request и есть изменения → запустить
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - backend/**/*
       when: always
+
+    # Если это push в ветку и есть изменения → тоже запустить
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        - backend/**/*
+      when: always
+
+    # Иначе не запускать
     - when: never
+
+  script:
+    - ./build_backend.sh
