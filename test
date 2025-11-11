@@ -1,8 +1,7 @@
-deploy-k8s:
-  stage: deploy
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "k8s"'
-      when: always
-    - when: never
-  script:
-    - ./deploy.sh
+pluginManagement {
+    repositories {
+        maven { url = uri("https://nexus.company.local/repository/maven-public/") }
+        gradlePluginPortal() // можно оставить, если есть интернет, либо удалить
+        mavenCentral()
+    }
+}
