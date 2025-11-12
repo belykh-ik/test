@@ -1,8 +1,2 @@
-debug-gradle:
-  stage: debug
-  image: gradle:7.6.4-jdk17
-  script:
-    - chmod +x gradlew
-    - ./gradlew build --debug > gradle-debug.log 2>&1
-    - grep "GET " gradle-debug.log | head -n 20
-  when: manual
+script:
+  - gradle build -Dorg.gradle.wrapper.download=false --debug > gradle-debug.log 2>&1
