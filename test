@@ -1,2 +1,9 @@
-script:
-  - gradle build -Dorg.gradle.wrapper.download=false --debug > gradle-debug.log 2>&1
+debug-gradle:
+  stage: debug
+  image: gradle:7.6.4-jdk17
+  script:
+    # Используем системный Gradle, без wrapper
+    - rm -rf gradlew gradle/
+    - gradle build --no-daemon --debug > gradle-debug.log 2>&1
+    - grep "GET " gradle-debug.log | head -n 20
+  when: manual
