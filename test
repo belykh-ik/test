@@ -1,1 +1,20 @@
-./gradlew build --debug | grep -E "apix|Resource missing|Downloading|Could not resolve"
+publishing {
+    publications {
+        create<MavenPublication>("mavenJava") {
+            from(components["java"])
+            groupId = "com.sbdgroup"
+            artifactId = "apix-core"
+            version = "1.2.18-dev"
+        }
+    }
+    repositories {
+        maven {
+            name = "nexus"
+            url = uri("https://nexus.sogaz.ru/repository/maven-releases/")
+            credentials {
+                username = System.getenv("NEXUS_USER")
+                password = System.getenv("NEXUS_PASS")
+            }
+        }
+    }
+}
