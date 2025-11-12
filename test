@@ -1,36 +1,16 @@
 import org.springframework.boot.gradle.tasks.bundling.BootJar
 
-tasks.named<BootJar>("bootJar") {
+plugins {
+    id("org.springframework.boot") version "3.5.7"
+    id("io.spring.dependency-management")
+    kotlin("jvm") version "1.9.23"
+}
+
+tasks.withType<BootJar>().configureEach {
     enabled = true
     layered {
         enabled.set(true)
         includeLayerTools.set(true)
-
-        application {
-            intoLayer("spring-boot-loader") {
-                include("org/springframework/boot/loader/**")
-            }
-            intoLayer("resources") {
-                include("resources/**")
-            }
-            intoLayer("application")
-        }
-
-        dependencies {
-            intoLayer("snapshot-dependencies") {
-                include("*:*:*SNAPSHOT")
-            }
-            intoLayer("dependencies")
-        }
-
-        layerOrder.set(
-            listOf(
-                "dependencies",
-                "spring-boot-loader",
-                "snapshot-dependencies",
-                "resources",
-                "application"
-            )
-        )
+        // ... остальная конфигурация ...
     }
 }
