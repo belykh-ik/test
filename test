@@ -1,2 +1,48 @@
-curl -H "Private-Token: <твой_токен>" \
-     https://gl.test.com/api/v4/projects/667/packages/maven/com/sbdagroup/apix-core/
+//////////////////////////////////////////////////////////////
+// KOTLIN LINTER (Gradle 8.5+ / 9.x compatible)
+//////////////////////////////////////////////////////////////
+
+val ktlint by configurations.creating
+
+dependencies {
+    ktlint("com.pinterest:ktlint:0.43.2") {
+        attributes {
+            attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.EXTERNAL))
+        }
+    }
+}
+
+val outputDir = "${project.buildDir}/reports/ktlint/"
+val inputFiles = project.fileTree(mapOf("dir" to ".", "include" to "**/*.kt"))
+
+// -------------------- ktlintCheck --------------------
+val ktlintCheck by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Check Kotlin code style."
+    classpath = ktlint
+    mainClass.set("com.pinterest.ktlint.Main")
+
+    inputs.files(inputFiles)
+    outputs.dir(outputDir)
+
+    args = listOf(
+        "--reporter=plain",
+        "--reporter=checkstyle,output=${outputDir}/ktlint.xml",
+        "**/*.kt"
+    )
+}
+
+// -------------------- ktlintFormat --------------------
+val ktlintFormat by tasks.registering(JavaExec::class) {
+    group = "formatting"
+    description = "Fix Kotlin code style deviations."
+    classpath = ktlint
+    mainClass.set("com.pinterest.ktlint.Main")
+
+    inputs.files(inputFiles)
+    outputs.dir(outputDir)
+
+    args = listOf("-F", "**/*.kt")
+
+    jvmArgs = (jvmArgs ?: emptyList()) + listOf("--add-opens=java.base/java.lang=ALL-UNNAMED")
+}
