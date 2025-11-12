@@ -1,16 +1,7 @@
-import org.springframework.boot.gradle.tasks.bundling.BootJar
-
-plugins {
-    id("org.springframework.boot") version "3.5.7"
-    id("io.spring.dependency-management")
-    kotlin("jvm") version "1.9.23"
-}
-
-tasks.withType<BootJar>().configureEach {
-    enabled = true
-    layered {
-        enabled.set(true)
-        includeLayerTools.set(true)
-        // ... остальная конфигурация ...
-    }
-}
+debug-buildenv:
+  stage: debug
+  image: gradle:7.6.4-jdk17
+  script:
+    - cd backend/app
+    - ./gradlew :app:buildEnvironment
+  when: manual
