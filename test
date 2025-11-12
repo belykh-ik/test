@@ -1,12 +1,2 @@
-gradle-build:
-  stage: build
-  image: gradle:7.6.4-jdk17
-  script:
-    - ./gradlew build --stacktrace --info > gradle.log 2>&1 || true
-    - echo "------ Топ 100 строк ошибок ------"
-    - grep -A10 -B5 -i "error" gradle.log | tail -n 100 || true
-  artifacts:
-    when: always
-    paths:
-      - gradle.log
-  allow_failure: false
+curl -H "Private-Token: <твой_токен>" \
+     https://gl.test.com/api/v4/projects/667/packages/maven/com/sbdagroup/apix-core/
