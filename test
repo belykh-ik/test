@@ -1,7 +1,1 @@
-pluginManagement {
-    repositories {
-        maven { url = uri("https://nexus.company.local/repository/maven-public/") }
-        gradlePluginPortal() // можно оставить, если есть интернет, либо удалить
-        mavenCentral()
-    }
-}
+./gradlew build --debug | grep "GET "
