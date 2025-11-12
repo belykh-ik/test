@@ -1,1 +1,21 @@
-wget https://services.gradle.org/distributions/gradle-7.6.4-bin.zip
+import org.springframework.boot.gradle.tasks.bundling.BootJar
+
+plugins {
+    id("org.springframework.boot")
+    id("io.spring.dependency-management")
+    kotlin("jvm") version "1.9.23"
+}
+
+dependencies {
+    implementation(project(":backend"))
+    implementation(project(":common"))
+}
+
+tasks.named<BootJar>("bootJar") {
+    archiveFileName.set("app.jar")
+    includeLayerTools.set(true)  // 👈 вот здесь это нужно
+}
+
+tasks.named<Jar>("jar") {
+    enabled = false
+}
