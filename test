@@ -1,1 +1,1 @@
-./gradlew build --debug | grep -i "apix"
+./gradlew build --debug | grep -E "apix|Resource missing|Downloading|Could not resolve"
