@@ -1,1 +1,1 @@
-com/sbdagroup/apix-core/
+./gradlew build --debug | grep -i "apix"
