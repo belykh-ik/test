@@ -1,7 +1,24 @@
-debug-network:
-  stage: debug
-  image: curlimages/curl:8.7.1
-  script:
-    - echo "Testing access from inside GitLab Runner"
-    - curl -vk --connect-timeout 5 https://gl.example.com/api/v4/projects/667/packages/maven/
-  when: manual
+########## STAGE 1 — BUILD ##########
+FROM nexus.sogaz.ru/library/gradle:7.6.4-jdk17 AS builder
+
+# Принудительно ломаем Docker cache
+ARG CACHE_BUST=1
+
+# ВАЖНО: единый Gradle cache внутри контейнера
+ENV GRADLE_USER_HOME=/home/gradle/.gradle_build
+
+WORKDIR /workspace
+
+# Копируем проект
+COPY . .
+
+# Удаляем старый кеш Gradle — чтобы точно видеть все запросы к репозиториям
+RUN rm -rf $GRADLE_USER_HOME/*
+
+# Выполняем сборку с полным выводом
+RUN gradle \
+    --no-daemon \
+    --stacktrace \
+    --info \
+    --refresh-dependencies \
+    :app:build
