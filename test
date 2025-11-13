@@ -1,24 +1,23 @@
-########## STAGE 1 — BUILD ##########
-FROM nexus.sogaz.ru/library/gradle:7.6.4-jdk17 AS builder
+#!/bin/bash
 
-# Принудительно ломаем Docker cache
-ARG CACHE_BUST=1
+GROUP=com/sbdagroup
+PROJECT=667
+TOKEN=yourtoken
+GL_URL="https://gl.example.com/api/v4/projects/$PROJECT/packages/maven"
 
-# ВАЖНО: единый Gradle cache внутри контейнера
-ENV GRADLE_USER_HOME=/home/gradle/.gradle_build
+ARTIFACTS=(apix-core apix-docs apix-admin apix-uploads)
+VERSION="1.2.18-dev"
 
-WORKDIR /workspace
+for ART in "${ARTIFACTS[@]}"; do
+  mkdir -p "$ART"
+  
+  curl -H "Private-Token: $TOKEN" \
+       "$GL_URL/$GROUP/$ART/$VERSION/$ART-$VERSION.jar" \
+       -o "$ART/$ART-$VERSION.jar"
 
-# Копируем проект
-COPY . .
+  curl -H "Private-Token: $TOKEN" \
+       "$GL_URL/$GROUP/$ART/$VERSION/$ART-$VERSION.pom" \
+       -o "$ART/$ART-$VERSION.pom"
 
-# Удаляем старый кеш Gradle — чтобы точно видеть все запросы к репозиториям
-RUN rm -rf $GRADLE_USER_HOME/*
-
-# Выполняем сборку с полным выводом
-RUN gradle \
-    --no-daemon \
-    --stacktrace \
-    --info \
-    --refresh-dependencies \
-    :app:build
+  # потом загрузить в Nexus
+done
