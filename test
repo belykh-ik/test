@@ -1,66 +1,16 @@
-#!/bin/bash
+# TCP (HTTPS) forward proxy for CONNECT
+stream {
+    # Proxy listener
+    server {
+        listen 8888;
 
-set -e
+        proxy_connect_timeout 10s;
+        proxy_timeout 300s;
 
-echo "=== Updating system ==="
-sudo apt update -y
-sudo apt install -y nginx
+        # DNS resolver
+        resolver 8.8.8.8 1.1.1.1 valid=300s;
 
-echo "=== Creating proxy directory ==="
-sudo mkdir -p /etc/nginx/proxy
-
-echo "=== Writing nginx proxy configuration ==="
-
-cat <<EOF | sudo tee /etc/nginx/conf.d/forward-proxy.conf
-# Forward HTTPS proxy for Gradle/Maven
-server {
-    listen 8888;
-
-    # DNS resolver for proxy_pass
-    resolver 8.8.8.8 1.1.1.1 valid=300s;
-
-    # Allow CONNECT tunneling
-    # This enables HTTPS proxying like 'curl -x proxy https://url'
-    include /etc/nginx/proxy/connect.conf;
-
-    # Main handler for HTTP/HTTPS proxying
-    location / {
-        proxy_pass \$scheme://\$http_host\$request_uri;
-
-        proxy_set_header Host \$http_host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-
-        # Increase timeouts for large jar files
-        proxy_read_timeout 300;
-        proxy_connect_timeout 300;
-        proxy_send_timeout 300;
+        # Tunnel to remote host
+        proxy_pass $proxy_host:$proxy_port;
     }
 }
-EOF
-
-echo "=== Enabling CONNECT support ==="
-
-cat <<EOF | sudo tee /etc/nginx/proxy/connect.conf
-# Enable HTTPS CONNECT handling
-
-# Allow CONNECT method
-if (\$request_method = CONNECT) {
-    proxy_pass \$arg_host;
-}
-EOF
-
-echo "=== Testing nginx configuration ==="
-sudo nginx -t
-
-echo "=== Restarting nginx ==="
-sudo systemctl restart nginx
-
-echo "=== Enabling nginx on startup ==="
-sudo systemctl enable nginx
-
-echo "=== DONE ==="
-echo "Forward proxy is running on port 8888"
-echo "Use it like:"
-echo "  curl -x http://<server-ip>:8888 https://gl.example.com"
