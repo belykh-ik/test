@@ -1,16 +1,10 @@
-# TCP (HTTPS) forward proxy for CONNECT
-stream {
-    # Proxy listener
-    server {
-        listen 8888;
+server {
+    listen 8888;
 
-        proxy_connect_timeout 10s;
-        proxy_timeout 300s;
+    resolver 8.8.8.8;
 
-        # DNS resolver
-        resolver 8.8.8.8 1.1.1.1 valid=300s;
-
-        # Tunnel to remote host
-        proxy_pass $proxy_host:$proxy_port;
+    location / {
+        proxy_pass $scheme://$http_host$request_uri;
+        proxy_set_header Host $http_host;
     }
 }
