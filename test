@@ -1,41 +1,24 @@
 #!/bin/bash
 
-set -e
+URL="https://example.com/repository/path/to/dir/"   # ← ТВОЙ URL
+TOKEN="your_token_here"                             # ← ТВОЙ TOKEN
+OUT="./downloaded"                                   # куда сохранить
 
-BASE_URL="https://your.repo.example.com/repository/path/"  # ← ТВОЙ URL
-TOKEN="your_token"                                          # ← ТВОЙ TOKEN
-TARGET="./mirror"                                           # куда скачать
+mkdir -p "$OUT"
 
-mkdir -p "$TARGET"
+# получаем список всех ссылок из каталога
+curl -s -H "Private-Token: $TOKEN" "$URL" \
+  | grep -oP '(?<=href=")[^"]+' \
+  | while read ITEM; do
 
-download_recursive() {
-    local URL="$1"
-    local DIR="$2"
+      # пропускаем родителя
+      [[ "$ITEM" == "../" ]] && continue
 
-    echo "Scanning: $URL"
+      echo "Downloading: $ITEM"
 
-    # Получаем список всех ссылок в директории
-    curl -s -H "Private-Token: $TOKEN" "$URL" \
-        | grep -oP '(?<=href=")[^"]+' \
-        | while read ITEM; do
+      curl -s -H "Private-Token: $TOKEN" \
+          -o "$OUT/$ITEM" \
+          "${URL}${ITEM}"
+done
 
-            # Пропускаем родительскую ссылку
-            [[ "$ITEM" == "../" ]] && continue
-
-            # Если каталог (заканчивается на /)
-            if [[ "$ITEM" == */ ]]; then
-                mkdir -p "$DIR/$ITEM"
-                download_recursive "${URL}${ITEM}" "$DIR/$ITEM"
-            else
-                echo "Downloading: $DIR/$ITEM"
-                curl -s -H "Private-Token: $TOKEN" \
-                     -o "$DIR/$ITEM" \
-                     "${URL}${ITEM}"
-            fi
-        done
-}
-
-download_recursive "$BASE_URL" "$TARGET"
-
-echo "=== DONE ==="
-echo "Все файлы скачаны в $TARGET/"
+echo "Done. Files saved to $OUT/"
