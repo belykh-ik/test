@@ -1,5 +1,5 @@
-project-root/
-  libs/
-    com/sbdagroup/apix-core/1.2.18-dev/
-        apix-core-1.2.18-dev.pom
-        apix-core-1.2.18-dev.jar
+repositories {
+    maven {
+        url = uri("$rootDir/libs")
+    }
+}
