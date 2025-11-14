@@ -1,24 +1,31 @@
 #!/bin/bash
 
-URL="https://example.com/repository/path/to/dir/"   # ← ТВОЙ URL
-TOKEN="your_token_here"                             # ← ТВОЙ TOKEN
-OUT="./downloaded"                                   # куда сохранить
+GROUP=com/test
+TOKEN="glpat-vrv3r5e43ver54"
+GL_URL="https://gl.test.com/api/v4/projects/667/packages/maven"
 
-mkdir -p "$OUT"
+ARTIFACTS=(appix-notifications)
+VERSION="1.2.18-dev"
 
-# получаем список всех ссылок из каталога
-curl -s -H "Private-Token: $TOKEN" "$URL" \
-  | grep -oP '(?<=href=")[^"]+' \
-  | while read ITEM; do
+for ART in "${ARTIFACTS[@]}"; do
+    echo "===> Processing $ART:$VERSION"
+    mkdir -p "$ART"
 
-      # пропускаем родителя
-      [[ "$ITEM" == "../" ]] && continue
+    # URL к директории
+    URL="$GL_URL/$GROUP/$ART/$VERSION/"
 
-      echo "Downloading: $ITEM"
+    echo "Listing files at: $URL"
 
-      curl -s -H "Private-Token: $TOKEN" \
-          -o "$OUT/$ITEM" \
-          "${URL}${ITEM}"
+    # Скачиваем HTML и вытаскиваем имена файлов
+    curl -s -H "Private-Token: $TOKEN" "$URL" \
+      | grep -oP '(?<=href=")[^"]+' \
+      | grep -v "\.\./" \
+      | while read FILE; do
+        
+        echo "Downloading: $FILE"
+
+        curl -s -H "Private-Token: $TOKEN" \
+            -o "$ART/$FILE" \
+            "$URL$FILE"
+      done
 done
-
-echo "Done. Files saved to $OUT/"
