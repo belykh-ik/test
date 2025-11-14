@@ -1,7 +1,5 @@
-curl -u "user:password" \
-  --upload-file apix-core-1.2.18-dev.pom \
-  "https://nexus.example.com/repository/maven-releases/com/sbdagroup/apix-core/1.2.18-dev/apix-core-1.2.18-dev.pom"
-
-curl -u "user:password" \
-  --upload-file apix-core-1.2.18-dev.jar \
-  "https://nexus.example.com/repository/maven-releases/com/sbdagroup/apix-core/1.2.18-dev/apix-core-1.2.18-dev.jar"
+project-root/
+  libs/
+    com/sbdagroup/apix-core/1.2.18-dev/
+        apix-core-1.2.18-dev.pom
+        apix-core-1.2.18-dev.jar
