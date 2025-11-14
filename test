@@ -1,6 +1,41 @@
-dependencyResolutionManagement {
-    repositories {
-        maven { url = uri("${rootDir}/libs") }
-        mavenCentral()
-    }
+#!/bin/bash
+
+set -e
+
+BASE_URL="https://your.repo.example.com/repository/path/"  # ← ТВОЙ URL
+TOKEN="your_token"                                          # ← ТВОЙ TOKEN
+TARGET="./mirror"                                           # куда скачать
+
+mkdir -p "$TARGET"
+
+download_recursive() {
+    local URL="$1"
+    local DIR="$2"
+
+    echo "Scanning: $URL"
+
+    # Получаем список всех ссылок в директории
+    curl -s -H "Private-Token: $TOKEN" "$URL" \
+        | grep -oP '(?<=href=")[^"]+' \
+        | while read ITEM; do
+
+            # Пропускаем родительскую ссылку
+            [[ "$ITEM" == "../" ]] && continue
+
+            # Если каталог (заканчивается на /)
+            if [[ "$ITEM" == */ ]]; then
+                mkdir -p "$DIR/$ITEM"
+                download_recursive "${URL}${ITEM}" "$DIR/$ITEM"
+            else
+                echo "Downloading: $DIR/$ITEM"
+                curl -s -H "Private-Token: $TOKEN" \
+                     -o "$DIR/$ITEM" \
+                     "${URL}${ITEM}"
+            fi
+        done
 }
+
+download_recursive "$BASE_URL" "$TARGET"
+
+echo "=== DONE ==="
+echo "Все файлы скачаны в $TARGET/"
