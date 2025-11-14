@@ -1,10 +1,7 @@
-server {
-    listen 8888;
+curl -u "user:password" \
+  --upload-file apix-core-1.2.18-dev.pom \
+  "https://nexus.example.com/repository/maven-releases/com/sbdagroup/apix-core/1.2.18-dev/apix-core-1.2.18-dev.pom"
 
-    resolver 8.8.8.8;
-
-    location / {
-        proxy_pass $scheme://$http_host$request_uri;
-        proxy_set_header Host $http_host;
-    }
-}
+curl -u "user:password" \
+  --upload-file apix-core-1.2.18-dev.jar \
+  "https://nexus.example.com/repository/maven-releases/com/sbdagroup/apix-core/1.2.18-dev/apix-core-1.2.18-dev.jar"
