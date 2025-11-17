@@ -1,1 +1,3 @@
-lsmod | grep -E "ip_tables|iptable_nat|nf_nat"
+docker login gl.test.com:5050 \
+  -u gitlab-ci-token \
+  -p <твoй_glpat_или_CI_JOB_TOKEN>
