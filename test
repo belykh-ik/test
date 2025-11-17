@@ -1,3 +1,2 @@
-docker login gl.test.com:5050 \
-  -u gitlab-ci-token \
-  -p <твoй_glpat_или_CI_JOB_TOKEN>
+wget https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_amd64.deb
+sudo dpkg -i k9s_Linux_amd64.deb
