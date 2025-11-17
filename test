@@ -1,1 +1,1 @@
-./gradlew :app:build --info | grep -i "com.sbdagroup"
+lsmod | grep -E "ip_tables|iptable_nat|nf_nat"
