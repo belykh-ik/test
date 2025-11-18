@@ -1,1 +1,1 @@
-Get-ChildItem -Recurse -Filter oc.exe C:\ 2>$null
+pip install pyobjc pyautogui
