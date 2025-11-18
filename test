@@ -1,1 +1,2 @@
-pip install pyobjc pyautogui
+echo 'alias pip="python3 -m pip"' >> ~/.zshrc
+source ~/.zshrc
