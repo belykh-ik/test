@@ -1,2 +1,305 @@
-wget https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_amd64.deb
-sudo dpkg -i k9s_Linux_amd64.deb
+======================
+= 1. AUTH & PROJECTS =
+======================
+
+# Список проектов
+oc get projects
+
+# Переключиться в проект
+oc project <project-name>
+
+# Информация о кластере
+oc cluster-info
+
+# Текущий пользователь
+oc whoami
+
+
+============================
+= 2. PODS — ЛОГИ / EXEC /  =
+============================
+
+# Посмотреть все pod'ы
+oc get pods
+oc get pods -o wide
+
+# Логи pod'a
+oc logs <pod>
+oc logs -f <pod>
+oc logs <pod> -c <container>
+
+# Exec внутрь pod'a
+oc exec -it <pod> -- bash
+oc exec -it <pod> -- sh
+
+# Описание pod'a
+oc describe pod <pod>
+
+
+==============================
+= 3. DEPLOY / ROLLOUT / RS  =
+==============================
+
+# Посмотреть deployment'ы
+oc get deploy
+
+# Перезапуск
+oc rollout restart deploy/<name>
+
+# Статус раскатки
+oc rollout status deploy/<name>
+
+# Откат
+oc rollout undo deploy/<name>
+
+# Репликасеты
+oc get rs
+
+
+===========================
+= 4. SECRETS / REGISTRY   =
+===========================
+
+# Список secret'ов
+oc get secrets
+
+# Описание
+oc describe secret <name>
+
+# Docker registry secret
+oc create secret docker-registry <secret-name> \
+  --docker-server=<registry> \
+  --docker-username=<user> \
+  --docker-password=<pass> \
+  --docker-email=<email>
+
+# Generic secret (key=value)
+oc create secret generic <name> --from-literal=key=value
+
+# Secret из файла
+oc create secret generic <name> --from-file=file.jks
+
+
+==============================
+= 5. SERVICES / ROUTES / NET =
+==============================
+
+# Все сервисы
+oc get svc
+
+# Описание сервиса
+oc describe svc <svc-name>
+
+# Endpoints (показывает реальные IP подов)
+oc get endpoints
+
+# Routes
+oc get routes
+oc describe route <route>
+
+
+===========================
+= 6. CONFIGMAPS           =
+===========================
+
+# Список
+oc get configmaps
+
+# Описание
+oc describe configmap <name>
+
+# Создать из файла
+oc create configmap <name> --from-file=config.yaml
+
+# Создать из переменных
+oc create configmap <name> --from-literal=KEY=VALUE
+
+
+===========================
+= 7. STORAGE / VOLUMES    =
+===========================
+
+# PVC
+oc get pvc
+oc describe pvc <pvc>
+
+# PV
+oc get pv
+oc describe pv <pv>
+
+
+===========================
+= 8. НОДЫ / РЕСУРСЫ       =
+===========================
+
+# Список нод
+oc get nodes
+
+# Описание ноды
+oc describe node <node>
+
+# Мониторинг ресурсов
+oc top nodes
+oc top pods
+
+# Проверить taints
+oc describe node <node> | grep -i taint
+
+
+===========================
+= 9. RBAC / ПОЛИТИКИ      =
+===========================
+
+# Все роли
+oc get roles
+oc get clusterroles
+
+# Привязки ролей
+oc get rolebindings
+oc get clusterrolebindings
+
+# Добавить пользователю SCC anyuid
+oc adm policy add-scc-to-user anyuid -z default -n <project>
+
+
+===========================
+= 10. YAML / МАНИФЕСТЫ    =
+===========================
+
+# Применить манифест
+oc apply -f manifest.yaml
+
+# Удалить ресурс
+oc delete -f manifest.yaml
+
+# Применить из stdin
+oc apply -f -
+
+# Экспорт ресурса в YAML
+oc get deploy <name> -o yaml
+
+
+===========================
+= 11. DEBUG & DIAGNOSIS   =
+===========================
+
+# Все события (очень важно)
+oc get events --sort-by=.metadata.creationTimestamp
+
+# Описание pod'a
+oc describe pod <pod>
+
+# Проверить imagePullSecret
+oc describe pod <pod> | grep -i pull
+
+# Проверить лимиты ресурсов
+oc describe pod <pod> | grep -i limit
+
+
+===========================
+= 12. ROUTES (OpenShift)  =
+===========================
+
+# Создать route из сервиса
+oc expose svc <svc-name>
+
+# Проверить backend route
+oc describe route <route>
+
+# Удалить route
+oc delete route <route-name>
+
+
+===========================
+= 13. HELM (в OKD)        =
+===========================
+
+# Установка
+helm install <release> <chart> -n <namespace>
+
+# Обновление
+helm upgrade <release> <chart> -n <namespace>
+
+# Удаление
+helm uninstall <release> -n <namespace>
+
+# Проверить values, применённые к релизу
+helm get values <release> -n <namespace>
+
+# Статус релиза
+helm status <release> -n <namespace>
+
+
+===========================
+= 14. TOKEN / LOGIN       =
+===========================
+
+# Получить токен
+oc whoami -t
+
+# Логин по токену
+oc login https://cluster:6443 --token=<token>
+
+
+===========================
+= 15. INGRESS / NETWORK   =
+===========================
+
+# Все ingress
+oc get ingress
+
+# Описание ingress
+oc describe ingress <name>
+
+# Проверить маршрутизацию
+oc get routes -o wide
+
+
+===========================
+= 16. JOBS / CRONJOBS     =
+===========================
+
+# Список job
+oc get jobs
+
+# Логи job
+oc logs job/<job-name>
+
+# Список cronjob
+oc get cronjob
+
+
+===========================
+= 17. CLEANUP             =
+===========================
+
+# Удалить pod
+oc delete pod <pod>
+
+# Удалить зависший pod принудительно
+oc delete pod <pod> --force --grace-period=0
+
+# Удалить evicted pod'ы
+oc get pods | grep Evicted | awk '{print $1}' | xargs oc delete pod
+
+
+===========================
+= 18. Канареечный Deploy  =
+===========================
+
+# Scale deployment
+oc scale deploy/<name> --replicas=1
+
+# Проверить ревизии
+oc rollout history deploy/<name>
+
+
+===========================
+= 19. Трафик и Логи API   =
+===========================
+
+# Логи API сервера
+oc logs -n openshift-apiserver -l apiserver=true
+
+# Логи routers
+oc logs -n openshift-ingress deploy/router-default
