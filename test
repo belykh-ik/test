@@ -1,2 +1,8 @@
-echo 'alias pip="python3 -m pip"' >> ~/.zshrc
-source ~/.zshrc
+save_credentials:prod:
+  extends:
+    - .prod_job
+    - .save_credentials
+  artifacts:
+    paths:
+      - .netrc
+    expire_in: 1h
