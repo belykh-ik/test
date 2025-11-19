@@ -1,2 +1,11 @@
-oc create secret generic kafka-truststore \
-  --from-file=truststore.jks=./crt/truststore.jks
+env:
+  - name: SPRING_DATASOURCE_URL
+    value: jdbc:postgresql://postgres:5432/appdb
+  - name: SPRING_DATASOURCE_USERNAME
+    value: appuser
+  - name: SPRING_DATASOURCE_PASSWORD
+    value: secret
+  - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+    value: update
+  - name: SPRING_DATASOURCE_DRIVER_CLASS_NAME
+    value: org.postgresql.Driver
