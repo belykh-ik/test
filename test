@@ -1,15 +1,2 @@
-git_pull:prod:
-  extends:
-    - .prod_job
-  needs:
-    - job: save_credentials:prod
-      artifacts: true
-  script:
-    - cp .netrc ~/.netrc
-    - chmod 600 ~/.netrc
-
-    # теперь авторизация точно есть
-    - git remote -v
-    - git fetch --all
-    - git switch main
-    - git reset --hard origin/main
+oc create secret generic kafka-truststore \
+  --from-file=truststore.jks=./crt/truststore.jks
