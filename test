@@ -1,35 +1,20 @@
-# Network
-bind 0.0.0.0
-port 6379
-protected-mode yes
+#!/bin/bash
 
-# Security
-requirepass ${REDIS_PASSWORD}
-rename-command FLUSHDB ""
-rename-command FLUSHALL ""
-rename-command CONFIG ""
-rename-command SHUTDOWN ""
+# Создаем .env файл если его нет
+if [ ! -f .env ]; then
+    echo "REDIS_PASSWORD=$(openssl rand -base64 32)" > .env
+    echo "Создан .env файл с автоматически сгенерированным паролем"
+fi
 
-# Persistence
-appendonly yes
-appendfsync everysec
-dir /data
-save 900 1
-save 300 10
-save 60 10000
+# Загружаем переменные
+source .env
 
-# Memory
-maxmemory 1gb
-maxmemory-policy allkeys-lru
+# Создаем redis.conf из шаблона
+envsubst < redis.conf.template > redis.conf
 
-# Performance
-tcp-keepalive 300
-timeout 0
-tcp-backlog 511
+# Запускаем Redis
+docker-compose up -d
 
-# Logging
-loglevel notice
-logfile ""
-
-# Security additional
-dir /data
+echo "Redis запущен в production режиме"
+echo "Пароль: $REDIS_PASSWORD"
+echo "Порт: 6379"
