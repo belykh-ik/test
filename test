@@ -1,4 +1,7 @@
-volumeMounts:
+volumes:
   - name: rabbitmq-enabled-plugins
-    mountPath: /etc/rabbitmq/enabled_plugins
-    subPath: enabled_plugins
+    configMap:
+      name: rabbitmq-enabled-plugins
+      items:
+        - key: enabled_plugins
+          path: enabled_plugins
