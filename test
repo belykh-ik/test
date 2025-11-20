@@ -1,3 +1,1 @@
-env:
-  - name: RABBITMQ_ENABLED_PLUGINS
-    value: "rabbitmq_management rabbitmq_prometheus rabbitmq_stomp"
+oc exec -n cvm-test rabbitmq-0 -- rabbitmq-plugins enable rabbitmq_stomp
