@@ -1,11 +1,24 @@
-env:
-  - name: SPRING_DATASOURCE_URL
-    value: jdbc:postgresql://postgres:5432/appdb
-  - name: SPRING_DATASOURCE_USERNAME
-    value: appuser
-  - name: SPRING_DATASOURCE_PASSWORD
-    value: secret
-  - name: SPRING_JPA_HIBERNATE_DDL_AUTO
-    value: update
-  - name: SPRING_DATASOURCE_DRIVER_CLASS_NAME
-    value: org.postgresql.Driver
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    sysctls:
+      - net.core.somaxconn=511
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+
+volumes:
+  redis_data:
+    driver: local
