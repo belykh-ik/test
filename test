@@ -1,20 +1,15 @@
-env:
-  - name: RABBITMQ_USERNAME
-    value: {{ .Values.auth.username | quote }}
+rabbitmq:
+  enabled: true
 
-  - name: RABBITMQ_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: {{ template "rabbitmq.secretName" . }}
-        key: rabbitmq-password
+  auth:
+    username: rmuser
+    password: rmpassword
 
-  - name: RABBITMQ_VHOST
-    value: "/"
+  # ВАЖНО — включаем STOMP
+  extraPlugins: "rabbitmq_stomp"
 
-  {{- if .Values.extraPlugins }}
-  - name: RABBITMQ_ENABLED_PLUGINS
-    value: {{ .Values.extraPlugins | quote }}
-  {{- end }}
-
-  - name: RABBITMQ_LOGS
-    value: "-"
+  service:
+    ports:
+      amqp: 5672
+      manager: 15672
+      stomp: 61613
