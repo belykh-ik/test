@@ -1,13 +1,3 @@
-.save_credentials:
-  script:
-    - echo "machine gitlab.test.ru" > ~/.netrc
-    - echo "login $RUNNER_USER" >> ~/.netrc
-    - echo "password $RUNNER_PASSWORD" >> ~/.netrc
-    - chmod 600 ~/.netrc
-
-    # 🔥 Добавляем ЭТУ СТРОКУ:
-    - cp ~/.netrc $CI_PROJECT_DIR/.netrc
-  artifacts:
-    paths:
-      - .netrc
-    expire_in: 1h
+securityContext:
+  runAsUser: 1001
+  fsGroup: 1001
