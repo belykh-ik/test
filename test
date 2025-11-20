@@ -1,7 +1,13 @@
-FROM nexus.../nginx:1.23.1-alpine
+.save_credentials:
+  script:
+    - echo "machine gitlab.test.ru" > ~/.netrc
+    - echo "login $RUNNER_USER" >> ~/.netrc
+    - echo "password $RUNNER_PASSWORD" >> ~/.netrc
+    - chmod 600 ~/.netrc
 
-USER root
-RUN mkdir -p /var/cache/nginx /var/run /var/log/nginx \
-    && chown -R 1001:1001 /var/cache/nginx /var/run /var/log/nginx
-
-USER 1001
+    # 🔥 Добавляем ЭТУ СТРОКУ:
+    - cp ~/.netrc $CI_PROJECT_DIR/.netrc
+  artifacts:
+    paths:
+      - .netrc
+    expire_in: 1h
