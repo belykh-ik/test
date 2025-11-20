@@ -1,20 +1,25 @@
-#!/bin/bash
+version: '3.8'
 
-# Создаем .env файл если его нет
-if [ ! -f .env ]; then
-    echo "REDIS_PASSWORD=$(openssl rand -base64 32)" > .env
-    echo "Создан .env файл с автоматически сгенерированным паролем"
-fi
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    networks:
+      - redis-net
 
-# Загружаем переменные
-source .env
+volumes:
+  redis_data:
 
-# Создаем redis.conf из шаблона
-envsubst < redis.conf.template > redis.conf
-
-# Запускаем Redis
-docker-compose up -d
-
-echo "Redis запущен в production режиме"
-echo "Пароль: $REDIS_PASSWORD"
-echo "Порт: 6379"
+networks:
+  redis-net:
+    name: redis-production-network
+    driver: bridge
