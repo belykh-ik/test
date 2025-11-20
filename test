@@ -1,24 +1,35 @@
-version: '3.8'
+# Network
+bind 0.0.0.0
+port 6379
+protected-mode yes
 
-services:
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    restart: unless-stopped
-    ports:
-      - "0.0.0.0:6379:6379"
-    volumes:
-      - redis_data:/data
-      - ./redis.conf:/usr/local/etc/redis/redis.conf
-    command: redis-server /usr/local/etc/redis/redis.conf
-    environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-    sysctls:
-      - net.core.somaxconn=511
-    security_opt:
-      - no-new-privileges:true
-    read_only: true
+# Security
+requirepass ${REDIS_PASSWORD}
+rename-command FLUSHDB ""
+rename-command FLUSHALL ""
+rename-command CONFIG ""
+rename-command SHUTDOWN ""
 
-volumes:
-  redis_data:
-    driver: local
+# Persistence
+appendonly yes
+appendfsync everysec
+dir /data
+save 900 1
+save 300 10
+save 60 10000
+
+# Memory
+maxmemory 1gb
+maxmemory-policy allkeys-lru
+
+# Performance
+tcp-keepalive 300
+timeout 0
+tcp-backlog 511
+
+# Logging
+loglevel notice
+logfile ""
+
+# Security additional
+dir /data
