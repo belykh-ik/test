@@ -1,3 +1,4 @@
-securityContext:
-  runAsUser: 1001
-  fsGroup: 1001
+RABBIT_HOST: rabbitmq-service
+RABBIT_PORT: 5672
+RABBIT_USER: rmuser
+RABBIT_PASSWORD: rmpassword
