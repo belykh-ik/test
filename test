@@ -1,3 +1,20 @@
-{{- if .Values.extraPlugins }}
-RABBITMQ_ENABLED_PLUGINS: {{ .Values.extraPlugins }}
-{{- end }}
+env:
+  - name: RABBITMQ_USERNAME
+    value: {{ .Values.auth.username | quote }}
+
+  - name: RABBITMQ_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: {{ template "rabbitmq.secretName" . }}
+        key: rabbitmq-password
+
+  - name: RABBITMQ_VHOST
+    value: "/"
+
+  {{- if .Values.extraPlugins }}
+  - name: RABBITMQ_ENABLED_PLUGINS
+    value: {{ .Values.extraPlugins | quote }}
+  {{- end }}
+
+  - name: RABBITMQ_LOGS
+    value: "-"
