@@ -1,1 +1,1 @@
-oc exec -n cvm-test <pod> -- printenv | grep -Ei "rabbit|broker"
+oc exec -n cvm-test rabbitmq-0 -- rabbitmq-plugins list
