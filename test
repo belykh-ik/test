@@ -1,1 +1,3 @@
-oc exec -n cvm-test rabbitmq-0 -- rabbitmq-plugins list
+env:
+  - name: RABBITMQ_ENABLED_PLUGINS
+    value: "rabbitmq_management rabbitmq_prometheus rabbitmq_stomp"
