@@ -1,4 +1,1 @@
-RABBIT_HOST: rabbitmq-service
-RABBIT_PORT: 5672
-RABBIT_USER: rmuser
-RABBIT_PASSWORD: rmpassword
+oc exec -n cvm-test <pod> -- printenv | grep -Ei "rabbit|broker"
