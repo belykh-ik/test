@@ -1,7 +1,1 @@
-- name: kafka-truststore
-  mountPath: "/etc/kafka/secrets/truststore.jks"
-  subPath: truststore.jks
-
-- name: kafka-keystore
-  mountPath: "/etc/kafka/secrets/keystore.jks"
-  subPath: keystore.jks
+oc logs <pod> | grep -Ei "SSL|trust|keystore|SASL"
