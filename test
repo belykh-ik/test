@@ -1,1 +1,1 @@
-oc logs <pod> | grep -Ei "SSL|trust|keystore|SASL"
+sh -c 'nc -zv <POSTGRES_HOST> 5432'
