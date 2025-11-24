@@ -1,7 +1,7 @@
-volumes:
-  - name: rabbitmq-enabled-plugins
-    configMap:
-      name: rabbitmq-enabled-plugins
-      items:
-        - key: enabled_plugins
-          path: enabled_plugins
+- name: kafka-truststore
+  mountPath: "/etc/kafka/secrets/truststore.jks"
+  subPath: truststore.jks
+
+- name: kafka-keystore
+  mountPath: "/etc/kafka/secrets/keystore.jks"
+  subPath: keystore.jks
