@@ -1,1 +1,6 @@
-'sh','-c','mkdir -p /etc/kafka/secrets && chmod -R 755 /etc/kafka/secrets'
+      - sh
+      - -c
+      - |
+        cp /mnt/ks/keystore.jks /kafka/keystore.jks
+        cp /mnt/ts/truststore.jks /kafka/truststore.jks
+        chmod 644 /kafka/*.jks
