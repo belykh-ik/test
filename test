@@ -1,1 +1,1 @@
-sh -c 'nc -zv <POSTGRES_HOST> 5432'
+'sh','-c','mkdir -p /etc/kafka/secrets && chmod -R 755 /etc/kafka/secrets'
