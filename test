@@ -1,16 +1,1 @@
-          env:
-            - name: KAFKA_SSL_TRUSTSTORE_LOCATION
-              value: "/etc/kafka/secrets/truststore.jks"
-            - name: KAFKA_SSL_TRUSTSTORE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: kafka-truststore
-                  key: password
-
-            - name: KAFKA_SSL_KEYSTORE_LOCATION
-              value: "/etc/kafka/secrets/keystore.jks"
-            - name: KAFKA_SSL_KEYSTORE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: kafka-keystore
-                  key: password
+openssl pkcs12 -in file.pfx -nocerts -nodes -out key.pem
