@@ -1,8 +1,1 @@
-.save_credentials:
-  script:
-    - MACHINE=$(echo "$CI_REPOSITORY_URL" | sed -E 's#^https?://([^/]+)/.*#\1#')
-    - echo "machine $MACHINE" > ~/.netrc
-    - echo "login $RUNNER_USER" >> ~/.netrc
-    - echo "password $RUNNER_PASSWORD" >> ~/.netrc
-    - chmod 600 ~/.netrc
-    - cp ~/.netrc $CI_PROJECT_DIR/.netrc
+cat /proc/$(pgrep java)/maps | grep secrets
