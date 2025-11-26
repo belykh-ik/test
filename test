@@ -1,1 +1,92 @@
-cat /proc/$(pgrep java)/maps | grep secrets
+#!/bin/sh
+set -e
+
+PASSWORD="test"
+CLIENT_CN="logs-writer"
+CLIENT_ALIAS="client"
+
+echo "================ 1. ROOT CA ================="
+openssl req -new -x509 -days 3650 \
+  -keyout ca.key \
+  -out ca.crt \
+  -subj "/CN=Kafka-Root-CA" \
+  -nodes
+
+echo "CA создано: ca.crt + ca.key"
+
+
+echo "================ 2. CLIENT KEY ================="
+openssl genrsa -out client.key 2048
+echo "client.key создан"
+
+
+echo "================ 3. CSR ================="
+openssl req -new \
+  -key client.key \
+  -out client.csr \
+  -subj "/CN=$CLIENT_CN"
+
+echo "client.csr создан"
+
+
+echo "================ 4. SIGN CLIENT CERT ================="
+openssl x509 -req \
+  -in client.csr \
+  -CA ca.crt \
+  -CAkey ca.key \
+  -CAcreateserial \
+  -out client.crt \
+  -days 365 \
+  -sha256
+
+echo "client.crt подписан CA"
+
+
+echo "================ 5. PKCS12 ================="
+openssl pkcs12 -export \
+  -in client.crt \
+  -inkey client.key \
+  -name $CLIENT_ALIAS \
+  -out client.p12 \
+  -password pass:$PASSWORD
+
+echo "client.p12 готов"
+
+
+echo "================ 6. KEYSTORE.JKS ================="
+keytool -importkeystore \
+  -srckeystore client.p12 \
+  -srcstoretype PKCS12 \
+  -srcstorepass $PASSWORD \
+  -destkeystore keystore.jks \
+  -deststoretype JKS \
+  -deststorepass $PASSWORD \
+  -destkeypass $PASSWORD
+
+echo "keystore.jks создан"
+
+
+echo "================ 7. TRUSTSTORE.JKS ================="
+keytool -keystore truststore.jks \
+  -alias rootCA \
+  -importcert \
+  -file ca.crt \
+  -storepass $PASSWORD \
+  -noprompt
+
+echo "truststore.jks создан"
+
+
+echo ""
+echo "================ 8. CHECK ================="
+echo ">>> KEYSTORE:"
+keytool -list -v -keystore keystore.jks -storepass $PASSWORD
+
+echo ""
+echo ">>> TRUSTSTORE:"
+keytool -list -v -keystore truststore.jks -storepass $PASSWORD
+
+echo ""
+echo "=== ГОТОВО ==="
+echo "Файлы:"
+ls -la | grep -E 'jks|crt|key|p12'
