@@ -1,115 +1,77 @@
-# ======================================
-# ALACRITTY — CONFIG
-# ======================================
+[window]
+opacity = 0.94
+startup_mode = "Windowed"
 
-# ---------- Window ----------
-window:
-  dynamic_title: true
-  decorations: full
-  # прозрачность
-  opacity: 0.94
-  padding:
-    x: 10
-    y: 10
-  startup_mode: Windowed
+[window.padding]
+x = 10
+y = 10
 
-# ---------- Font ----------
-font:
-  normal:
-    family: JetBrainsMono Nerd Font
-    style: Regular
-  bold:
-    family: JetBrainsMono Nerd Font
-    style: Bold
-  italic:
-    family: JetBrainsMono Nerd Font
-    style: Italic
-  size: 13.0
-  offset:
-    x: 0
-    y: 0
-  glyph_offset:
-    x: 0
-    y: 0
+[font]
+size = 13.0
 
-# ---------- Colors (Tokyo Night) ----------
-colors:
-  primary:
-    background: '0x1a1b26'
-    foreground: '0xa9b1d6'
+[font.normal]
+family = "JetBrainsMono Nerd Font Mono"
+style = "Regular"
 
-  cursor:
-    text:   '0x1a1b26'
-    cursor: '0xc0caf5'
+[font.bold]
+family = "JetBrainsMono Nerd Font Mono"
+style = "Bold"
 
-  normal:
-    black:   '0x32344a'
-    red:     '0xf7768e'
-    green:   '0x9ece6a'
-    yellow:  '0xe0af68'
-    blue:    '0x7aa2f7'
-    magenta: '0xad8ee6'
-    cyan:    '0x449dab'
-    white:   '0x787c99'
+[font.italic]
+family = "JetBrainsMono Nerd Font Mono"
+style = "Italic"
 
-  bright:
-    black:   '0x444b6a'
-    red:     '0xff7a93'
-    green:   '0xb9f27c'
-    yellow:  '0xff9e64'
-    blue:    '0x7da6ff'
-    magenta: '0xbb9af7'
-    cyan:    '0x0db9d7'
-    white:   '0xacb0d0'
+[cursor]
+style = "Block"
+blink = "Off"
 
-# ---------- Cursor ----------
-cursor:
-  style: Block
-  blink: Off
+[mouse]
+hide_when_typing = true
 
-# ---------- Mouse ----------
-mouse:
-  hide_when_typing: true
+[scrolling]
+history = 20000
+multiplier = 3
 
-# ---------- Scrolling ----------
-scrolling:
-  history: 20000
-  multiplier: 3
+# === Tokyo Night color scheme ===
+[colors.primary]
+background = "0x1a1b26"
+foreground = "0xa9b1d6"
 
-# ---------- Shell ----------
-shell:
-  program: "powershell.exe"
-  args:
-    - "-NoLogo"
-    - "-NoExit"
-    - "-ExecutionPolicy"
-    - "Bypass"
+[colors.cursor]
+text = "0x1a1b26"
+cursor = "0xc0caf5"
 
-# Если используешь WSL — раскомментируй ниже ↓
-# shell:
-#   program: "wsl.exe"
-#   args: ["-d", "Ubuntu"]
+[colors.normal]
+black   = "0x32344a"
+red     = "0xf7768e"
+green   = "0x9ece6a"
+yellow  = "0xe0af68"
+blue    = "0x7aa2f7"
+magenta = "0xad8ee6"
+cyan    = "0x449dab"
+white   = "0x787c99"
 
-# ---------- Environment ----------
-env:
-  TERM: xterm-256color
-  LANG: en_US.UTF-8
-  LC_ALL: en_US.UTF-8
+[colors.bright]
+black   = "0x444b6a"
+red     = "0xff7a93"
+green   = "0xb9f27c"
+yellow  = "0xff9e64"
+blue    = "0x7da6ff"
+magenta = "0xbb9af7"
+cyan    = "0x0db9d7"
+white   = "0xacb0d0"
 
-# ---------- Keyboard shortcuts ----------
-key_bindings:
-  # Copy
-  - { key: C, mods: Control|Shift, action: Copy }
-  # Paste
-  - { key: V, mods: Control|Shift, action: Paste }
-  # Fullscreen
-  - { key: F11, action: ToggleFullscreen }
-  # Scroll (Page Up/Down)
-  - { key: PageUp, mods: Shift,   action: ScrollPageUp }
-  - { key: PageDown, mods: Shift, action: ScrollPageDown }
-  # Clear scrollback
-  - { key: L, mods: Control, action: ClearHistory }
+[env]
+TERM = "xterm-256color"
+LANG = "en_US.UTF-8"
+LC_ALL = "en_US.UTF-8"
 
-# ---------- Performance ----------
-draw_bold_text_with_bright_colors: true
-live_config_reload: true
+[keyboard]
+bindings = [
+  { key="C", mods="Control|Shift", action="Copy" },
+  { key="V", mods="Control|Shift", action="Paste" },
+  { key="F11", action="ToggleFullscreen" },
+  { key="PageUp", mods="Shift", action="ScrollPageUp" },
+  { key="PageDown", mods="Shift", action="ScrollPageDown" },
+  { key="L", mods="Control", action="ClearHistory" },
+]
