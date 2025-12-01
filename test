@@ -1,14 +1,9 @@
-apiVersion: route.openshift.io/v1
-kind: Route
+# k8s-secret-db.yaml
+apiVersion: v1
+kind: Secret
 metadata:
-  name: logs-writer
-  namespace: your-ns
-spec:
-  path: /
-  port:
-    targetPort: 8080
-  to:
-    kind: Service
-    name: logs-writer
-    weight: 100
-  wildcardPolicy: None
+  name: myapp-postgres
+type: Opaque
+stringData:
+  POSTGRES_USER: "test"
+  POSTGRES_PASSWORD: "test"
