@@ -1,1 +1,56 @@
-oc describe dns.operator/default | egrep "Cluster IP|Cluster Domain"
+#!/bin/bash
+
+# ==== CONFIG ====
+GITLAB_URL="https://gitlab.com"
+REG_TOKEN="PASTE_YOUR_TOKEN_HERE"
+RUNNER_NAME="docker-runner"
+RUNNER_TAGS="docker,ci"
+DEFAULT_IMAGE="alpine:latest"
+
+# ==== DO NOT EDIT BELOW ====
+
+set -e
+
+echo "[+] Checking Docker..."
+if ! command -v docker &> /dev/null; then
+  echo "[+] Docker not found. Installing..."
+  apt update && apt install -y ca-certificates curl gnupg lsb-release
+  mkdir -m 0755 -p /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/$(lsb_release -is | tr '[:upper:]' '[:lower:]')/gpg | \
+      gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+    https://download.docker.com/linux/$(lsb_release -is | tr '[:upper:]' '[:lower:]') \
+    $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+  apt update
+  apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  systemctl enable --now docker
+else
+  echo "[+] Docker already installed."
+fi
+
+echo "[+] Creating config directory..."
+mkdir -p /srv/gitlab-runner/config
+
+echo "[+] Registering runner..."
+docker run --rm -it \
+  -v /srv/gitlab-runner/config:/etc/gitlab-runner \
+  gitlab/gitlab-runner:latest register \
+  --non-interactive \
+  --url "$GITLAB_URL" \
+  --registration-token "$REG_TOKEN" \
+  --executor "docker" \
+  --docker-image "$DEFAULT_IMAGE" \
+  --description "$RUNNER_NAME" \
+  --tag-list "$RUNNER_TAGS" \
+  --run-untagged="false" \
+  --locked="false"
+
+echo "[+] Starting runner container..."
+docker run -d --name gitlab-runner --restart always \
+  -v /srv/gitlab-runner/config:/etc/gitlab-runner \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  gitlab/gitlab-runner:latest
+
+echo "[✓] GitLab Runner installed and running."
+echo "[i] Check in GitLab: Settings → CI/CD → Runners"
