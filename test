@@ -1,1 +1,6 @@
-openssl s_client -showcerts -connect cvm-test.sogaz.ru:443 </dev/null 2>/dev/null | openssl x509 -outform PEM > sogaz-ca.crt
+keytool -importcert \
+  -keystore $JAVA_HOME/lib/security/cacerts \
+  -storepass changeit \
+  -file /opt/certs/sogaz-ca.crt \
+  -alias sogaz-ca \
+  -noprompt
