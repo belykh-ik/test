@@ -1,6 +1,8 @@
-keytool -importcert \
-  -keystore $JAVA_HOME/lib/security/cacerts \
-  -storepass changeit \
-  -file /opt/certs/sogaz-ca.crt \
-  -alias sogaz-ca \
-  -noprompt
+COPY sogaz-ca.crt /tmp/
+RUN keytool -importcert \
+    -file /tmp/sogaz-ca.crt \
+    -alias sogaz-ca \
+    -keystore $JAVA_HOME/lib/security/cacerts \
+    -storepass changeit \
+    -noprompt && \
+    rm /tmp/sogaz-ca.crt
