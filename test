@@ -1,8 +1,6 @@
-COPY sogaz-ca.crt /tmp/
-RUN keytool -importcert \
-    -file /tmp/sogaz-ca.crt \
-    -alias sogaz-ca \
-    -keystore $JAVA_HOME/lib/security/cacerts \
-    -storepass changeit \
-    -noprompt && \
-    rm /tmp/sogaz-ca.crt
+if ! command -v sudo >/dev/null 2>&1; then
+  sudo() {
+    # если sudo нет, просто выполняем команду как есть
+    "$@"
+  }
+fi
