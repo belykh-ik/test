@@ -1,7 +1,2 @@
-sudo tee /etc/apt/apt.conf.d/99disable-verification <<EOF
-Acquire::https::Verify-Peer "false";
-Acquire::https::Verify-Host "false";
-APT::Get::AllowUnauthenticated "true";
-Acquire::AllowInsecureRepositories "true";
-Acquire::AllowDowngradeToInsecureRepositories "true";
-EOF
+curl -fsSL https://packages.gitlab.com/runner/gitlab-runner/gpgkey | \
+  sudo tee /usr/share/keyrings/gitlab-runner.gpg
