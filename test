@@ -1,2 +1,1 @@
-curl -fsSL https://nexus.sogaz.ru/repository/apt-proxy-packages.gitlab.com-bullseye/dists/bullseye/InRelease \
-  -o InRelease
+gpg --show-keys InRelease | sudo tee /usr/share/keyrings/gitlab.gpg >/dev/null
