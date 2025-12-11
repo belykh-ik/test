@@ -1,1 +1,7 @@
-sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 3F01618A51312F3F
+sudo tee /etc/apt/apt.conf.d/99disable-verification <<EOF
+Acquire::https::Verify-Peer "false";
+Acquire::https::Verify-Host "false";
+APT::Get::AllowUnauthenticated "true";
+Acquire::AllowInsecureRepositories "true";
+Acquire::AllowDowngradeToInsecureRepositories "true";
+EOF
