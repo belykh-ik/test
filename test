@@ -1,2 +1,1 @@
-curl -fsSL https://packages.gitlab.com/runner/gitlab-runner/gpgkey | \
-  sudo tee /usr/share/keyrings/gitlab-runner.gpg
+sudo apt-key list | grep -B2 -A2 3F01618A51312F3F
