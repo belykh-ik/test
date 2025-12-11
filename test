@@ -1,2 +1,2 @@
-echo "deb [trusted=yes] http://your-proxy.local/gitlab-runner/debian/ $(lsb_release -cs) main" \
-  | sudo tee /etc/apt/sources.list.d/gitlab-runner-local.list
+echo "deb [trusted=yes] https://nexus.sogaz.ru/repository/apt-proxy-packages.gitlab.com-bullseye/ bullseye main" \
+  | sudo tee /etc/apt/sources.list.d/gitlab-runner-proxy.list
