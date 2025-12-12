@@ -1,1 +1,3 @@
-curl -I "https://nexus.sogaz.ru/repository/apt-proxy-deb.debian.org-bookworm-backports/dists/bookworm-backports/Release"
+curl -x http://proxy.company.local:3128 \
+     -o /tmp/adoptium.gpg \
+     https://packages.adoptium.net/artifactory/api/gpg/key/public
