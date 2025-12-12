@@ -1,4 +1,2 @@
-sudo mkdir -p /etc/apt/keyrings
-
-wget -O /etc/apt/keyrings/adoptium.gpg \
-https://nexus.sogaz.ru/repository/raw-proxy-adoptopenjdk.jfrog.io/
+deb [signed-by=/etc/apt/keyrings/adoptium.gpg] \
+https://nexus.sogaz.ru/repository/apt-proxy-adoptium/ bookworm main
