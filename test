@@ -1,4 +1,10 @@
-sudo apt install -y \
-  docker-ce=5:20.10.xx~3-0~debian-bookworm \
-  docker-ce-cli=5:20.10.xx~3-0~debian-bookworm \
-  containerd.io
+build:
+  script: |
+    if [[ "$CI_COMMIT_BRANCH" == "main" ]]; then
+      echo "DEPLOY_ENV=prod" >> .env
+    else
+      echo "DEPLOY_ENV=dev" >> .env
+    fi
+  artifacts:
+    reports:
+      dotenv: .env
