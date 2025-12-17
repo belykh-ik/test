@@ -1,10 +1,3 @@
-build:
-  script: |
-    if [[ "$CI_COMMIT_BRANCH" == "main" ]]; then
-      echo "DEPLOY_ENV=prod" >> .env
-    else
-      echo "DEPLOY_ENV=dev" >> .env
-    fi
-  artifacts:
-    reports:
-      dotenv: .env
+envFrom:
+  - secretRef:
+      name: {{ .Values.secrets.dbSecretName }}
