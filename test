@@ -1,15 +1,1 @@
-# УБРАТЬ из envFrom:
-# - secretRef:
-#     name: cvm-secret-bao
-
-env:
-  - name: KAFKA_SASL_USERNAME
-    valueFrom:
-      secretKeyRef:
-        name: cvm-secret-bao
-        key: KAFKA_SASL_USERNAME   # <-- или реальное имя ключа в секрете
-  - name: KAFKA_SASL_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: cvm-secret-bao
-        key: KAFKA_SASL_PASSWORD   # <-- или "spring.kafka.sasl.password" если так называется
+kubectl -n <ns> get secret cvm-secret-bao -o jsonpath='{.data}' | jq -r 'keys[]'
