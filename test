@@ -1,1 +1,27 @@
-kubectl -n <ns> get secret cvm-secret-bao -o jsonpath='{.data}' | jq -r 'keys[]'
+initContainers:
+  - name: check-secret
+    image: busybox:1.36
+    command:
+      - sh
+      - -c
+      - |
+        echo "=== initContainer: check-secret ==="
+
+        echo "[1] Current env variables:"
+        env | sort
+
+        echo "[2] Check required secret variables:"
+        if [ -z "${KAFKA_SASL_JAAS_CONFIG_PASSWORD:-}" ]; then
+          echo "ERROR: KAFKA_SASL_JAAS_CONFIG_PASSWORD is NOT set"
+          exit 1
+        fi
+
+        echo "OK: KAFKA_SASL_JAAS_CONFIG_PASSWORD is set"
+
+        echo "=== initContainer finished successfully ==="
+    env:
+      - name: KAFKA_SASL_JAAS_CONFIG_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: cvm-secret-bao
+            key: KAFKA_SASL_JAAS_CONFIG_PASSWORD
