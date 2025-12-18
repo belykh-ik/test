@@ -1,34 +1,17 @@
-services:
-  rabbitmq:
-    image: rabbitmq:3.13-management
-    container_name: rabbitmq
-    hostname: rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: dev
-      RABBITMQ_DEFAULT_PASS: dev
-      RABBITMQ_DEFAULT_VHOST: /
-    ports:
-      - "5672:5672"        # AMQP наружу (если надо)
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+global
+  log /dev/log local0
+  daemon
 
-  haproxy:
-    image: haproxy:2.9-alpine
-    container_name: haproxy
-    restart: always
-    ports:
-      - "80:80"            # UI наружу
-      # - "5672:5672"       # НЕ надо, иначе конфликт с rabbitmq:5672
-    volumes:
-      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+defaults
+  timeout connect 5s
+  timeout client  60s
+  timeout server  60s
 
-volumes:
-  rabbitmq_data:
+frontend fe_rmq_ui
+  bind *:80
+  mode http
+  default_backend be_rmq_ui
+
+backend be_rmq_ui
+  mode http
+  server rmq 127.0.0.1:15672 check
