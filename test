@@ -1,25 +1,34 @@
-events {}
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: dev
+      RABBITMQ_DEFAULT_PASS: dev
+      RABBITMQ_DEFAULT_VHOST: /
+    ports:
+      - "5672:5672"        # AMQP наружу (если надо)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
 
-http {
-  upstream rabbitmq_ui {
-    server rabbitmq:15672;
-  }
+  haproxy:
+    image: haproxy:2.9-alpine
+    container_name: haproxy
+    restart: always
+    ports:
+      - "80:80"            # UI наружу
+      # - "5672:5672"       # НЕ надо, иначе конфликт с rabbitmq:5672
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
-  server {
-    listen 80;
-    server_name server01;
-
-    location / {
-      proxy_pass http://rabbitmq_ui;
-
-      proxy_http_version 1.1;
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto $scheme;
-
-      # важно для UI
-      proxy_buffering off;
-    }
-  }
-}
+volumes:
+  rabbitmq_data:
