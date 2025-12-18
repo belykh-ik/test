@@ -1,34 +1,25 @@
-services:
-  rabbitmq:
-    image: rabbitmq:3.13-management
-    container_name: rabbitmq
-    hostname: rabbitmq
+events {}
 
-    environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: admin123
+http {
+  upstream rabbitmq_ui {
+    server rabbitmq:15672;
+  }
 
-    ports:
-      - "5672:5672"   # AMQP (если нужен извне)
-      # 15672 НЕ публикуем наружу
+  server {
+    listen 80;
+    server_name server01;
 
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+    location / {
+      proxy_pass http://rabbitmq_ui;
 
-  nginx:
-    image: nginx:1.25-alpine
-    container_name: rabbitmq-nginx
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
 
-    ports:
-      - "80:80"       # UI будет доступен по http://server01
-      # или можно 8080:80
-
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+      # важно для UI
+      proxy_buffering off;
+    }
+  }
+}
