@@ -1,27 +1,32 @@
-initContainers:
-  - name: check-secret
-    image: busybox:1.36
-    command:
-      - sh
-      - -c
-      - |
-        echo "=== initContainer: check-secret ==="
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    hostname: rabbitmq
+    restart: unless-stopped
 
-        echo "[1] Current env variables:"
-        env | sort
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
 
-        echo "[2] Check required secret variables:"
-        if [ -z "${KAFKA_SASL_JAAS_CONFIG_PASSWORD:-}" ]; then
-          echo "ERROR: KAFKA_SASL_JAAS_CONFIG_PASSWORD is NOT set"
-          exit 1
-        fi
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+      # По желанию: дефолтный vhost
+      # RABBITMQ_DEFAULT_VHOST: /
 
-        echo "OK: KAFKA_SASL_JAAS_CONFIG_PASSWORD is set"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      # Если хочешь подкладывать конфиги/definitions:
+      # - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      # - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      # - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
 
-        echo "=== initContainer finished successfully ==="
-    env:
-      - name: KAFKA_SASL_JAAS_CONFIG_PASSWORD
-        valueFrom:
-          secretKeyRef:
-            name: cvm-secret-bao
-            key: KAFKA_SASL_JAAS_CONFIG_PASSWORD
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  rabbitmq_data:
