@@ -3,24 +3,14 @@ services:
     image: rabbitmq:3.13-management
     container_name: rabbitmq
     hostname: rabbitmq
-    restart: unless-stopped
-
-    ports:
-      - "5672:5672"    # AMQP
-      - "15672:15672"  # Management UI
 
     environment:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: admin123
-      # По желанию: дефолтный vhost
-      # RABBITMQ_DEFAULT_VHOST: /
 
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-      # Если хочешь подкладывать конфиги/definitions:
-      # - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
-      # - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      # - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    ports:
+      - "5672:5672"   # AMQP (если нужен извне)
+      # 15672 НЕ публикуем наружу
 
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
@@ -28,5 +18,17 @@ services:
       timeout: 5s
       retries: 10
 
-volumes:
-  rabbitmq_data:
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: rabbitmq-nginx
+
+    ports:
+      - "80:80"       # UI будет доступен по http://server01
+      # или можно 8080:80
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
