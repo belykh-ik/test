@@ -1,39 +1,72 @@
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
-metadata:
-  name: cvm-secret-bao
-spec:
-  refreshInterval: 1h
+version: "3.8"
 
-  secretStoreRef:
-    name: openbao-store
-    kind: SecretStore   # или ClusterSecretStore
+services:
+  opensearch:
+    image: opensearchproject/opensearch:3.3.1
+    container_name: opensearch
+    environment:
+      - cluster.name=opensearch-vector
+      - node.name=opensearch-1
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      # DEV ONLY
+      - DISABLE_SECURITY_PLUGIN=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    networks: [stack]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
-  target:
-    name: cvm-secret-bao
-    creationPolicy: Owner
+  dashboards:
+    image: opensearchproject/opensearch-dashboards:3.3.1
+    container_name: opensearch-dashboards
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      # DEV ONLY
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    networks: [stack]
 
-    template:
-      type: Opaque
-      engineVersion: v2
-      data:
-        .env: |
-          KAFKA_SASL_USERNAME={{ .kafka_username }}
-          KAFKA_SASL_JAAS_CONFIG_PASSWORD={{ .kafka_password }}
-          DB_PASSWORD={{ .db_password }}
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    hostname: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Web UI
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks: [stack]
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
-  data:
-    - secretKey: kafka_username
-      remoteRef:
-        key: path/to/secret
-        property: kafka_username
+networks:
+  stack:
 
-    - secretKey: kafka_password
-      remoteRef:
-        key: path/to/secret
-        property: kafka_password
-
-    - secretKey: db_password
-      remoteRef:
-        key: path/to/secret
-        property: db_password
+volumes:
+  opensearch-data:
+  rabbitmq-data:
