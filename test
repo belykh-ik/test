@@ -1,14 +1,35 @@
+initContainers:
+- name: render-redisson
+  image: alpine:3.19
+  command: ["sh","-c", "apk add --no-cache gettext && envsubst < /in/redisson-conf.yaml > /out/redisson-conf.yaml" ]
+  envFrom:
+    - configMapRef:
+        name: global-configmap
+    - secretRef:
+        name: cvm-secret-bao
+  volumeMounts:
+    - name: redisson-conf
+      mountPath: /in
+    - name: rendered-conf
+      mountPath: /out
+---
 volumes:
-  - ./tls:/usr/share/opensearch-dashboards/config/tls:ro
-  - ./opensearch-dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml:ro
+- name: redisson-conf
+  configMap:
+    name: redisson-conf
+    items:
+      - key: redisson-conf.yaml
+        path: redisson-conf.yaml
+- name: rendered-conf
+  emptyDir: {}
 ----
-server.host: "0.0.0.0"
-server.ssl.enabled: true
-server.ssl.certificate: /usr/share/opensearch-dashboards/config/tls/server.crt
-server.ssl.key: /usr/share/opensearch-dashboards/config/tls/server.key
+envFrom:
+  - configMapRef:
+      name: global-configmap
+  - secretRef:
+      name: cvm-secret-bao
 
-opensearch.hosts: ["https://opensearch:9200"]
-opensearch.username: "admin"
-opensearch.password: "admin"
-opensearch.ssl.certificateAuthorities: ["/usr/share/opensearch-dashboards/config/tls/ca.crt"]
-opensearch.ssl.verificationMode: certificate
+volumeMounts:
+  - name: rendered-conf
+    mountPath: /cash
+    readOnly: true
