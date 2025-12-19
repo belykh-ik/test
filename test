@@ -1,6 +1,15 @@
-healthcheck:
-  test: ["CMD-SHELL", "curl --silent --fail --cacert /usr/share/opensearch/config/tls/ca.crt -u admin:admin https://localhost:9200/_cluster/health >/dev/null || exit 1"]
-  interval: 30s
-  timeout: 10s
-  retries: 10
------
+transforms:
+  normalize:
+    type: remap
+    inputs:
+      - vuln_input
+      - ingest_http
+    source: |
+      .@timestamp = now()
+
+      if !exists(.service) { .service = "vector" }
+
+      if !exists(.host) {
+        .host, err = get_hostname()
+        if err != null { .host = "unknown" }
+      }
