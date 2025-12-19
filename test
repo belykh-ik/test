@@ -1,15 +1,18 @@
-curl -X POST http://localhost:8686/ingest \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"hello from http ingest","level":"info"}'
----------
-curl --cacert tls/ca.crt -u admin:admin \
-  "https://localhost:9200/vuln_input-*/_search?q=message:hello&pretty"
------------
-printf '{"message":"hello from tls socket","level":"warn"}\n' | \
-openssl s_client -connect localhost:6514 \
-  -CAfile tls/ca.crt \
-  -cert tls/client.crt \
-  -key tls/client.key -quiet
----------
-curl --cacert tls/ca.crt -u admin:admin \
-  "https://localhost:9200/vuln_input-*/_search?q=message:tls&pretty"
+$Server = "server"
+$TimeoutMs = 300
+
+for ($Port = 1; $Port -le 65535; $Port++) {
+    try {
+        $TcpClient = New-Object System.Net.Sockets.TcpClient
+        $Async = $TcpClient.BeginConnect($Server, $Port, $null, $null)
+
+        if ($Async.AsyncWaitHandle.WaitOne($TimeoutMs, $false) -and $TcpClient.Connected) {
+            Write-Output "$Server:$Port - OPEN"
+        }
+
+        $TcpClient.Close()
+    }
+    catch {
+        # ничего не выводим
+    }
+}
