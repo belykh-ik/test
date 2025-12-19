@@ -1,35 +1,3 @@
-initContainers:
-- name: render-redisson
-  image: alpine:3.19
-  command: ["sh","-c", "apk add --no-cache gettext && envsubst < /in/redisson-conf.yaml > /out/redisson-conf.yaml" ]
-  envFrom:
-    - configMapRef:
-        name: global-configmap
-    - secretRef:
-        name: cvm-secret-bao
-  volumeMounts:
-    - name: redisson-conf
-      mountPath: /in
-    - name: rendered-conf
-      mountPath: /out
----
-volumes:
-- name: redisson-conf
-  configMap:
-    name: redisson-conf
-    items:
-      - key: redisson-conf.yaml
-        path: redisson-conf.yaml
-- name: rendered-conf
-  emptyDir: {}
-----
-envFrom:
-  - configMapRef:
-      name: global-configmap
-  - secretRef:
-      name: cvm-secret-bao
-
-volumeMounts:
-  - name: rendered-conf
-    mountPath: /cash
-    readOnly: true
+FROM alpine:3.19
+RUN apk add --no-cache gettext ca-certificates
+ENTRYPOINT ["sh","-c"]
