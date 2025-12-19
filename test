@@ -1,18 +1,15 @@
 $Server = "server"
 $TimeoutMs = 300
 
-for ($Port = 1; $Port -le 65535; $Port++) {
+1..65535 | ForEach-Object -Parallel {
     try {
-        $TcpClient = New-Object System.Net.Sockets.TcpClient
-        $Async = $TcpClient.BeginConnect($Server, $Port, $null, $null)
+        $TcpClient = [System.Net.Sockets.TcpClient]::new()
+        $Async = $TcpClient.BeginConnect($using:Server, $_, $null, $null)
 
-        if ($Async.AsyncWaitHandle.WaitOne($TimeoutMs, $false) -and $TcpClient.Connected) {
-            Write-Output "$Server:$Port - OPEN"
+        if ($Async.AsyncWaitHandle.WaitOne($using:TimeoutMs, $false) -and $TcpClient.Connected) {
+            "$using:Server:$($_) - OPEN"
         }
 
         $TcpClient.Close()
-    }
-    catch {
-        # ничего не выводим
-    }
-}
+    } catch {}
+} -ThrottleLimit 200
