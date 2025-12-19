@@ -1,15 +1,15 @@
-transforms:
-  normalize:
-    type: remap
-    inputs:
-      - vuln_input
-      - ingest_http
-    source: |
-      .@timestamp = now()
-
-      if !exists(.service) { .service = "vector" }
-
-      if !exists(.host) {
-        .host, err = get_hostname()
-        if err != null { .host = "unknown" }
-      }
+curl -X POST http://localhost:8686/ingest \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"hello from http ingest","level":"info"}'
+---------
+curl --cacert tls/ca.crt -u admin:admin \
+  "https://localhost:9200/vuln_input-*/_search?q=message:hello&pretty"
+-----------
+printf '{"message":"hello from tls socket","level":"warn"}\n' | \
+openssl s_client -connect localhost:6514 \
+  -CAfile tls/ca.crt \
+  -cert tls/client.crt \
+  -key tls/client.key -quiet
+---------
+curl --cacert tls/ca.crt -u admin:admin \
+  "https://localhost:9200/vuln_input-*/_search?q=message:tls&pretty"
