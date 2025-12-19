@@ -1,3 +1,8 @@
 FROM alpine:3.19
+
+RUN printf "%s\n" \
+  "http://nexus.company.local/repository/alpine-proxy/v3.19/main" \
+  "http://nexus.company.local/repository/alpine-proxy/v3.19/community" \
+  > /etc/apk/repositories
+
 RUN apk add --no-cache gettext ca-certificates
-ENTRYPOINT ["sh","-c"]
