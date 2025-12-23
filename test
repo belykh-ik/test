@@ -1,8 +1,204 @@
-FROM alpine:3.19
+#!/usr/bin/env bash
+set -euo pipefail
 
-RUN printf "%s\n" \
-  "http://nexus.company.local/repository/alpine-proxy/v3.19/main" \
-  "http://nexus.company.local/repository/alpine-proxy/v3.19/community" \
-  > /etc/apk/repositories
+############################################
+# Kafka admin script for bitnami/kafka
+# Run INSIDE kafka container
+############################################
 
-RUN apk add --no-cache gettext ca-certificates
+### === Paths (bitnami specific) ===
+KAFKA_BIN="/opt/bitnami/kafka/bin"
+
+### === Connection ===
+BOOTSTRAP="${BOOTSTRAP:-localhost:9092}"
+ZK="${ZK:-}"   # set ONLY if you are using Zookeeper
+
+### === Optional admin client config (SASL/SSL) ===
+ADMIN_CMD_CONFIG="${ADMIN_CMD_CONFIG:-}"
+
+cmd_cfg() {
+  [[ -n "${ADMIN_CMD_CONFIG}" ]] && echo "--command-config ${ADMIN_CMD_CONFIG}"
+}
+
+k() {
+  "${KAFKA_BIN}/$1" "${@:2}"
+}
+
+############################################
+# Health & info
+############################################
+
+health() {
+  k kafka-broker-api-versions --bootstrap-server "${BOOTSTRAP}" $(cmd_cfg)
+}
+
+topics() {
+  k kafka-topics --bootstrap-server "${BOOTSTRAP}" --list $(cmd_cfg)
+}
+
+topic_describe() {
+  k kafka-topics --bootstrap-server "${BOOTSTRAP}" \
+    --describe --topic "$1" $(cmd_cfg)
+}
+
+############################################
+# Topics
+############################################
+
+topic_create() {
+  local topic="$1"
+  local partitions="${2:-3}"
+  local rf="${3:-1}"
+
+  k kafka-topics --bootstrap-server "${BOOTSTRAP}" \
+    --create --if-not-exists \
+    --topic "${topic}" \
+    --partitions "${partitions}" \
+    --replication-factor "${rf}" \
+    $(cmd_cfg)
+}
+
+topic_delete() {
+  k kafka-topics --bootstrap-server "${BOOTSTRAP}" \
+    --delete --topic "$1" $(cmd_cfg)
+}
+
+############################################
+# Consumer groups
+############################################
+
+groups() {
+  k kafka-consumer-groups --bootstrap-server "${BOOTSTRAP}" \
+    --list $(cmd_cfg)
+}
+
+group_describe() {
+  k kafka-consumer-groups --bootstrap-server "${BOOTSTRAP}" \
+    --describe --group "$1" $(cmd_cfg)
+}
+
+############################################
+# SCRAM users
+############################################
+
+user_create() {
+  local user="$1"
+  local pass="$2"
+  local mech="${3:-SCRAM-SHA-256}"
+
+  if [[ -n "${ZK}" ]]; then
+    k kafka-configs --zookeeper "${ZK}" \
+      --alter --add-config "${mech}=[iterations=4096,password=${pass}]" \
+      --entity-type users --entity-name "${user}"
+  else
+    k kafka-configs --bootstrap-server "${BOOTSTRAP}" \
+      --alter --add-config "${mech}=[iterations=4096,password=${pass}]" \
+      --entity-type users --entity-name "${user}" \
+      $(cmd_cfg)
+  fi
+}
+
+user_describe() {
+  if [[ -n "${ZK}" ]]; then
+    k kafka-configs --zookeeper "${ZK}" \
+      --describe --entity-type users --entity-name "$1"
+  else
+    k kafka-configs --bootstrap-server "${BOOTSTRAP}" \
+      --describe --entity-type users --entity-name "$1" \
+      $(cmd_cfg)
+  fi
+}
+
+############################################
+# ACL
+############################################
+
+acls() {
+  k kafka-acls --bootstrap-server "${BOOTSTRAP}" \
+    --list $(cmd_cfg)
+}
+
+acl_topic_rw() {
+  local user="$1"
+  local topic="$2"
+
+  k kafka-acls --bootstrap-server "${BOOTSTRAP}" \
+    --add --allow-principal "User:${user}" \
+    --operation Read --operation Write --operation Describe \
+    --topic "${topic}" \
+    $(cmd_cfg)
+}
+
+acl_group_read() {
+  local user="$1"
+  local group="$2"
+
+  k kafka-acls --bootstrap-server "${BOOTSTRAP}" \
+    --add --allow-principal "User:${user}" \
+    --operation Read \
+    --group "${group}" \
+    $(cmd_cfg)
+}
+
+acl_admin() {
+  local user="$1"
+
+  k kafka-acls --bootstrap-server "${BOOTSTRAP}" \
+    --add --allow-principal "User:${user}" \
+    --operation All --cluster \
+    $(cmd_cfg)
+}
+
+############################################
+# Dispatcher
+############################################
+
+case "${1:-}" in
+  health) health ;;
+  topics) topics ;;
+  topic_create) topic_create "$2" "$3" "$4" ;;
+  topic_delete) topic_delete "$2" ;;
+  topic_describe) topic_describe "$2" ;;
+  groups) groups ;;
+  group_describe) group_describe "$2" ;;
+  user_create) user_create "$2" "$3" "$4" ;;
+  user_describe) user_describe "$2" ;;
+  acls) acls ;;
+  acl_topic_rw) acl_topic_rw "$2" "$3" ;;
+  acl_group_read) acl_group_read "$2" "$3" ;;
+  acl_admin) acl_admin "$2" ;;
+  *)
+    echo "Commands:"
+    echo "  health"
+    echo "  topics"
+    echo "  topic_create <topic> [partitions] [rf]"
+    echo "  topic_delete <topic>"
+    echo "  topic_describe <topic>"
+    echo "  groups"
+    echo "  group_describe <group>"
+    echo "  user_create <user> <password> [SCRAM-SHA-256|SCRAM-SHA-512]"
+    echo "  user_describe <user>"
+    echo "  acls"
+    echo "  acl_topic_rw <user> <topic>"
+    echo "  acl_group_read <user> <group>"
+    echo "  acl_admin <user>"
+    ;;
+esac
+
+----------------
+docker compose exec kafka bash
+cd /opt/bitnami/kafka/bin
+
+# создать пользователя
+bash kafka-admin.sh user_create app1 StrongPass123
+
+# создать топик
+bash kafka-admin.sh topic_create orders 3 1
+
+# выдать права
+bash kafka-admin.sh acl_topic_rw app1 orders
+bash kafka-admin.sh acl_group_read app1 orders-group
+
+# проверить
+bash kafka-admin.sh acls
+bash kafka-admin.sh user_describe app1
