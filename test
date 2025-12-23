@@ -3,25 +3,56 @@ set -euo pipefail
 
 ############################################
 # Kafka admin script for bitnami/kafka
-# Run INSIDE kafka container
+# Run OUTSIDE container (host), executes commands INSIDE container via docker exec
+# KRaft mode ONLY (no Zookeeper)
 ############################################
 
-### === Paths (bitnami specific) ===
-KAFKA_BIN="/opt/bitnami/kafka/bin"
+### === Container runtime ===
+RUNTIME="${RUNTIME:-docker}"          # docker|podman
+CONTAINER="${CONTAINER:-kafka}"       # container name or id
+EXEC_USER="${EXEC_USER:-}"            # optional: e.g. "root"
 
-### === Connection ===
+### === Paths (bitnami specific, inside container) ===
+KAFKA_BIN="${KAFKA_BIN:-/opt/bitnami/kafka/bin}"
+
+### === Connection (as seen FROM INSIDE the container) ===
 BOOTSTRAP="${BOOTSTRAP:-localhost:9092}"
-ZK="${ZK:-}"   # set ONLY if you are using Zookeeper
 
-### === Optional admin client config (SASL/SSL) ===
+### === Optional admin client config (SASL/SSL) (path INSIDE container) ===
 ADMIN_CMD_CONFIG="${ADMIN_CMD_CONFIG:-}"
 
-cmd_cfg() {
+############################################
+# Helpers
+############################################
+
+die() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+runtime_exec() {
+  local user_args=()
+  if [[ -n "${EXEC_USER}" ]]; then
+    user_args=(--user "${EXEC_USER}")
+  fi
+
+  # shellcheck disable=SC2068
+  "${RUNTIME}" exec -i ${user_args[@]} "${CONTAINER}" "$@"
+}
+
+cmd_cfg_args() {
   [[ -n "${ADMIN_CMD_CONFIG}" ]] && echo "--command-config ${ADMIN_CMD_CONFIG}"
 }
 
 k() {
-  "${KAFKA_BIN}/$1" "${@:2}"
+  local bin="$1"; shift
+  # shellcheck disable=SC2046
+  runtime_exec "${KAFKA_BIN}/${bin}" "$@"
+}
+
+check_container() {
+  "${RUNTIME}" inspect "${CONTAINER}" >/dev/null 2>&1 || \
+    die "Container '${CONTAINER}' not found. Set CONTAINER=<name_or_id>"
 }
 
 ############################################
@@ -29,16 +60,27 @@ k() {
 ############################################
 
 health() {
-  k kafka-broker-api-versions --bootstrap-server "${BOOTSTRAP}" $(cmd_cfg)
+  # shellcheck disable=SC2046
+  k kafka-broker-api-versions \
+    --bootstrap-server "${BOOTSTRAP}" \
+    $(cmd_cfg_args)
 }
 
 topics() {
-  k kafka-topics --bootstrap-server "${BOOTSTRAP}" --list $(cmd_cfg)
+  # shellcheck disable=SC2046
+  k kafka-topics \
+    --bootstrap-server "${BOOTSTRAP}" \
+    --list \
+    $(cmd_cfg_args)
 }
 
 topic_describe() {
-  k kafka-topics --bootstrap-server "${BOOTSTRAP}" \
-    --describe --topic "$1" $(cmd_cfg)
+  local topic="${1:?topic required}"
+  # shellcheck disable=SC2046
+  k kafka-topics \
+    --bootstrap-server "${BOOTSTRAP}" \
+    --describe --topic "${topic}" \
+    $(cmd_cfg_args)
 }
 
 ############################################
@@ -46,21 +88,27 @@ topic_describe() {
 ############################################
 
 topic_create() {
-  local topic="$1"
+  local topic="${1:?topic required}"
   local partitions="${2:-3}"
   local rf="${3:-1}"
 
-  k kafka-topics --bootstrap-server "${BOOTSTRAP}" \
+  # shellcheck disable=SC2046
+  k kafka-topics \
+    --bootstrap-server "${BOOTSTRAP}" \
     --create --if-not-exists \
     --topic "${topic}" \
     --partitions "${partitions}" \
     --replication-factor "${rf}" \
-    $(cmd_cfg)
+    $(cmd_cfg_args)
 }
 
 topic_delete() {
-  k kafka-topics --bootstrap-server "${BOOTSTRAP}" \
-    --delete --topic "$1" $(cmd_cfg)
+  local topic="${1:?topic required}"
+  # shellcheck disable=SC2046
+  k kafka-topics \
+    --bootstrap-server "${BOOTSTRAP}" \
+    --delete --topic "${topic}" \
+    $(cmd_cfg_args)
 }
 
 ############################################
@@ -68,45 +116,51 @@ topic_delete() {
 ############################################
 
 groups() {
-  k kafka-consumer-groups --bootstrap-server "${BOOTSTRAP}" \
-    --list $(cmd_cfg)
+  # shellcheck disable=SC2046
+  k kafka-consumer-groups \
+    --bootstrap-server "${BOOTSTRAP}" \
+    --list \
+    $(cmd_cfg_args)
 }
 
 group_describe() {
-  k kafka-consumer-groups --bootstrap-server "${BOOTSTRAP}" \
-    --describe --group "$1" $(cmd_cfg)
+  local group="${1:?group required}"
+  # shellcheck disable=SC2046
+  k kafka-consumer-groups \
+    --bootstrap-server "${BOOTSTRAP}" \
+    --describe --group "${group}" \
+    $(cmd_cfg_args)
 }
 
 ############################################
-# SCRAM users
+# SCRAM users (KRaft)
 ############################################
 
 user_create() {
-  local user="$1"
-  local pass="$2"
+  local user="${1:?user required}"
+  local pass="${2:?password required}"
   local mech="${3:-SCRAM-SHA-256}"
 
-  if [[ -n "${ZK}" ]]; then
-    k kafka-configs --zookeeper "${ZK}" \
-      --alter --add-config "${mech}=[iterations=4096,password=${pass}]" \
-      --entity-type users --entity-name "${user}"
-  else
-    k kafka-configs --bootstrap-server "${BOOTSTRAP}" \
-      --alter --add-config "${mech}=[iterations=4096,password=${pass}]" \
-      --entity-type users --entity-name "${user}" \
-      $(cmd_cfg)
-  fi
+  # shellcheck disable=SC2046
+  k kafka-configs \
+    --bootstrap-server "${BOOTSTRAP}" \
+    --alter \
+    --add-config "${mech}=[iterations=4096,password=${pass}]" \
+    --entity-type users \
+    --entity-name "${user}" \
+    $(cmd_cfg_args)
 }
 
 user_describe() {
-  if [[ -n "${ZK}" ]]; then
-    k kafka-configs --zookeeper "${ZK}" \
-      --describe --entity-type users --entity-name "$1"
-  else
-    k kafka-configs --bootstrap-server "${BOOTSTRAP}" \
-      --describe --entity-type users --entity-name "$1" \
-      $(cmd_cfg)
-  fi
+  local user="${1:?user required}"
+
+  # shellcheck disable=SC2046
+  k kafka-configs \
+    --bootstrap-server "${BOOTSTRAP}" \
+    --describe \
+    --entity-type users \
+    --entity-name "${user}" \
+    $(cmd_cfg_args)
 }
 
 ############################################
@@ -114,91 +168,115 @@ user_describe() {
 ############################################
 
 acls() {
-  k kafka-acls --bootstrap-server "${BOOTSTRAP}" \
-    --list $(cmd_cfg)
+  # shellcheck disable=SC2046
+  k kafka-acls \
+    --bootstrap-server "${BOOTSTRAP}" \
+    --list \
+    $(cmd_cfg_args)
 }
 
 acl_topic_rw() {
-  local user="$1"
-  local topic="$2"
+  local user="${1:?user required}"
+  local topic="${2:?topic required}"
 
-  k kafka-acls --bootstrap-server "${BOOTSTRAP}" \
-    --add --allow-principal "User:${user}" \
-    --operation Read --operation Write --operation Describe \
+  # shellcheck disable=SC2046
+  k kafka-acls \
+    --bootstrap-server "${BOOTSTRAP}" \
+    --add \
+    --allow-principal "User:${user}" \
+    --operation Read \
+    --operation Write \
+    --operation Describe \
     --topic "${topic}" \
-    $(cmd_cfg)
+    $(cmd_cfg_args)
 }
 
 acl_group_read() {
-  local user="$1"
-  local group="$2"
+  local user="${1:?user required}"
+  local group="${2:?group required}"
 
-  k kafka-acls --bootstrap-server "${BOOTSTRAP}" \
-    --add --allow-principal "User:${user}" \
+  # shellcheck disable=SC2046
+  k kafka-acls \
+    --bootstrap-server "${BOOTSTRAP}" \
+    --add \
+    --allow-principal "User:${user}" \
     --operation Read \
     --group "${group}" \
-    $(cmd_cfg)
+    $(cmd_cfg_args)
 }
 
 acl_admin() {
-  local user="$1"
+  local user="${1:?user required}"
 
-  k kafka-acls --bootstrap-server "${BOOTSTRAP}" \
-    --add --allow-principal "User:${user}" \
-    --operation All --cluster \
-    $(cmd_cfg)
+  # shellcheck disable=SC2046
+  k kafka-acls \
+    --bootstrap-server "${BOOTSTRAP}" \
+    --add \
+    --allow-principal "User:${user}" \
+    --operation All \
+    --cluster \
+    $(cmd_cfg_args)
 }
 
 ############################################
-# Dispatcher
+# Usage
 ############################################
+
+usage() {
+  cat <<'EOF'
+Kafka admin wrapper (KRaft, no Zookeeper)
+
+Env vars:
+  RUNTIME=docker|podman
+  CONTAINER=<kafka container name/id>
+  EXEC_USER=<optional user inside container>
+  BOOTSTRAP=<bootstrap seen from inside container> (default localhost:9092)
+  ADMIN_CMD_CONFIG=<path inside container to client.properties>
+  KAFKA_BIN=<path inside container> (default /opt/bitnami/kafka/bin)
+
+Commands:
+  health
+  topics
+  topic_create <topic> [partitions] [rf]
+  topic_delete <topic>
+  topic_describe <topic>
+  groups
+  group_describe <group>
+  user_create <user> <password> [SCRAM-SHA-256|SCRAM-SHA-512]
+  user_describe <user>
+  acls
+  acl_topic_rw <user> <topic>
+  acl_group_read <user> <group>
+  acl_admin <user>
+
+Examples:
+  CONTAINER=kafka ./kafka-admin.sh health
+  CONTAINER=kafka ./kafka-admin.sh topic_create orders 3 1
+  CONTAINER=kafka ./kafka-admin.sh user_create app StrongPass123
+  CONTAINER=kafka ./kafka-admin.sh acl_topic_rw app orders
+EOF
+}
+
+############################################
+# Main
+############################################
+
+check_container
 
 case "${1:-}" in
   health) health ;;
   topics) topics ;;
-  topic_create) topic_create "$2" "$3" "$4" ;;
-  topic_delete) topic_delete "$2" ;;
-  topic_describe) topic_describe "$2" ;;
+  topic_create) topic_create "${2:-}" "${3:-}" "${4:-}" ;;
+  topic_delete) topic_delete "${2:-}" ;;
+  topic_describe) topic_describe "${2:-}" ;;
   groups) groups ;;
-  group_describe) group_describe "$2" ;;
-  user_create) user_create "$2" "$3" "$4" ;;
-  user_describe) user_describe "$2" ;;
+  group_describe) group_describe "${2:-}" ;;
+  user_create) user_create "${2:-}" "${3:-}" "${4:-}" ;;
+  user_describe) user_describe "${2:-}" ;;
   acls) acls ;;
-  acl_topic_rw) acl_topic_rw "$2" "$3" ;;
-  acl_group_read) acl_group_read "$2" "$3" ;;
-  acl_admin) acl_admin "$2" ;;
-  *)
-    echo "Commands:"
-    echo "  health"
-    echo "  topics"
-    echo "  topic_create <topic> [partitions] [rf]"
-    echo "  topic_delete <topic>"
-    echo "  topic_describe <topic>"
-    echo "  groups"
-    echo "  group_describe <group>"
-    echo "  user_create <user> <password> [SCRAM-SHA-256|SCRAM-SHA-512]"
-    echo "  user_describe <user>"
-    echo "  acls"
-    echo "  acl_topic_rw <user> <topic>"
-    echo "  acl_group_read <user> <group>"
-    echo "  acl_admin <user>"
-    ;;
+  acl_topic_rw) acl_topic_rw "${2:-}" "${3:-}" ;;
+  acl_group_read) acl_group_read "${2:-}" "${3:-}" ;;
+  acl_admin) acl_admin "${2:-}" ;;
+  ""|-h|--help|help) usage ;;
+  *) die "Unknown command: ${1}. Run with --help." ;;
 esac
-
-----------------
-docker compose exec kafka bash
-cd /opt/bitnami/kafka/bin
-
-# создать пользователя
-bash kafka-admin.sh user_create app1 StrongPass123
-
-# создать топик
-bash kafka-admin.sh topic_create orders 3 1
-
-# выдать права
-bash kafka-admin.sh acl_topic_rw app1 orders
-bash kafka-admin.sh acl_group_read app1 orders-group
-
-# проверить
-bash kafka-admin.sh acls
-bash kafka-admin.sh user_describe app1
