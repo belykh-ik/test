@@ -1,1 +1,11 @@
-kubectl get pod <pod> -n <ns> -o jsonpath='{.metadata.ownerReferences[*].kind}{" "}{.metadata.ownerReferences[*].name}{"\n"}'
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  preview: {
+    host: true,               // или '0.0.0.0'
+    port: 3000,
+    allowedHosts: [
+      'test-inspection.lee.sogaz.ru',
+    ],
+  },
+})
