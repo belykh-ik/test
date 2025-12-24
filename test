@@ -1,11 +1,19 @@
-import { defineConfig } from 'vite'
-
-export default defineConfig({
-  preview: {
-    host: true,               // или '0.0.0.0'
-    port: 3000,
-    allowedHosts: [
-      'test-inspection.lee.sogaz.ru',
-    ],
-  },
-})
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: inspection-front-dev-rewrite
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - host: test-inspection.lee.sogaz.ru
+    http:
+      paths:
+      - path: /eng(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: inspection-front-dev
+            port:
+              number: 80
