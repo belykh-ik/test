@@ -1,98 +1,8 @@
-version: "3.8"
-
-services:
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
-    hostname: rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
-    ports:
-      - "15672:15672"   # RabbitMQ UI
-      # 5672 можно не публиковать, если доступ нужен только из docker network через haproxy
-      # - "5672:5672"
-    networks:
-      - integration-net
-    healthcheck:
-      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-
-  haproxy:
-    image: haproxy:2.9
-    container_name: haproxy
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    ports:
-      - "5672:5672"     # AMQP вход для клиентов (Vector/внешние)
-      # если нужен stats:
-      - "8404:8404"
-    volumes:
-      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-    networks:
-      - integration-net
-    healthcheck:
-      test: ["CMD-SHELL", "haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-networks:
-  integration-net:
-    external: true
-
-volumes:
-  rabbitmq-data:
-
-
------
-global
-  log stdout format raw local0
-  maxconn 2048
-
-defaults
-  log global
-  mode tcp
-  option tcplog
-  timeout connect 5s
-  timeout client  1m
-  timeout server  1m
-
-# AMQP вход (RabbitMQ)
-frontend amqp_in
-  bind *:5672
-  default_backend rabbit_amqp
-
-backend rabbit_amqp
-  server rabbitmq rabbitmq:5672 check
-
-# (опционально) Web stats HAProxy
-frontend stats
-  bind *:8404
-  mode http
-  stats enable
-  stats uri /stats
-  stats refresh 10s
-
-------------
 sources:
-  rabbit_vuln:
+  rabbit_events:
     type: amqp
-    url: "amqp://guest:guest@haproxy:5672/%2f"   # или rabbitmq:5672
-    queue: "vuln.events"
-    acknowledgements: true
-    decoding:
-      codec: json
-
-  rabbit_audit:
-    type: amqp
-    url: "amqp://guest:guest@haproxy:5672/%2f"
-    queue: "audit.events"
+    connection_string: "amqp://dev:dev@haproxy:5672/%2f"
+    queue: "events"
     acknowledgements: true
     decoding:
       codec: json
@@ -100,26 +10,53 @@ sources:
 transforms:
   normalize:
     type: remap
-    inputs: ["rabbit_vuln", "rabbit_audit"]
+    inputs: ["rabbit_events"]
     source: |
       .@timestamp = now()
-      if !exists(.service) { .service = "vector" }
-      # метка очереди (удобно для отладки)
-      .amqp_queue = .metadata.amqp.queue ?? "unknown"
+      if !exists(.type) { .type = "other" }
+
+  route_by_type:
+    type: route
+    inputs: ["normalize"]
+    route:
+      vuln: '.type == "vuln"'
+      audit: '.type == "audit"'
+      app:  '.type == "app"'
+      other: 'true'
 
 sinks:
-  opensearch_logs:
+  os_vuln:
     type: elasticsearch
-    inputs: ["normalize"]
+    inputs: ["route_by_type.vuln"]
     endpoints: ["https://opensearch:9200"]
     api_version: v7
-    auth:
-      strategy: basic
-      user: admin
-      password: admin
-    tls:
-      ca_file: /etc/vector/tls/ca.crt
-      verify_certificate: true
-      verify_hostname: false
-    bulk:
-      index: "events-%Y.%m.%d"
+    auth: { strategy: basic, user: admin, password: admin }
+    tls: { ca_file: /etc/vector/tls/ca.crt, verify_certificate: true, verify_hostname: false }
+    bulk: { index: "vuln-%Y.%m.%d", action: index }
+
+  os_audit:
+    type: elasticsearch
+    inputs: ["route_by_type.audit"]
+    endpoints: ["https://opensearch:9200"]
+    api_version: v7
+    auth: { strategy: basic, user: admin, password: admin }
+    tls: { ca_file: /etc/vector/tls/ca.crt, verify_certificate: true, verify_hostname: false }
+    bulk: { index: "audit-%Y.%m.%d", action: index }
+
+  os_app:
+    type: elasticsearch
+    inputs: ["route_by_type.app"]
+    endpoints: ["https://opensearch:9200"]
+    api_version: v7
+    auth: { strategy: basic, user: admin, password: admin }
+    tls: { ca_file: /etc/vector/tls/ca.crt, verify_certificate: true, verify_hostname: false }
+    bulk: { index: "app-%Y.%m.%d", action: index }
+
+  os_other:
+    type: elasticsearch
+    inputs: ["route_by_type.other"]
+    endpoints: ["https://opensearch:9200"]
+    api_version: v7
+    auth: { strategy: basic, user: admin, password: admin }
+    tls: { ca_file: /etc/vector/tls/ca.crt, verify_certificate: true, verify_hostname: false }
+    bulk: { index: "other-%Y.%m.%d", action: index }
