@@ -1,27 +1,31 @@
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: inspection-front-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: test-inspection.lee.repo.ru
-    http:
-      paths:
-      - path: /engineer(/|$)(.*)
-        pathType: ImplementationSpecific
-        backend:
-          service:
-            name: engineer-inspection-front-service
-            port:
-              number: 8080
-      - path: /(.*)
-        pathType: ImplementationSpecific
-        backend:
-          service:
-            name: inspection-front-service
-            port:
-              number: 8080
+# -------- build stage --------
+FROM gradle:8.7-jdk21 AS builder
+
+WORKDIR /home/gradle/project
+
+# 1) Сначала копируем только то, что влияет на зависимости (лучше кешируется)
+COPY gradlew gradlew.bat build.gradle settings.gradle gradle.properties ./
+COPY gradle/ gradle/
+
+# прогреем зависимости (если что-то упадёт из-за приватного nexus — можно убрать эту строку)
+RUN ./gradlew --no-daemon dependencies || true
+
+# 2) Теперь исходники
+COPY src/ src/
+
+# Собираем bootJar (у тебя archiveFileName = "app.jar")
+RUN ./gradlew --no-daemon clean bootJar -x test
+
+
+# -------- runtime stage --------
+FROM openjdk:21-jdk-slim
+
+WORKDIR /app
+
+COPY --from=builder /home/gradle/project/build/libs/app.jar /app/app.jar
+
+# Для OKD/OpenShift: контейнер часто стартует со случайным UID, важны права на группу 0
+RUN chgrp -R 0 /app && chmod -R g=u /app
+
+EXPOSE 8080
+ENTRYPOINT ["java","-jar","/app/app.jar"]
