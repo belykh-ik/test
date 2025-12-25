@@ -1,62 +1,6 @@
-sources:
-  rabbit_events:
-    type: amqp
-    connection_string: "amqp://dev:dev@haproxy:5672/%2f"
-    queue: "events"
-    acknowledgements: true
-    decoding:
-      codec: json
-
-transforms:
-  normalize:
-    type: remap
-    inputs: ["rabbit_events"]
-    source: |
-      .@timestamp = now()
-      if !exists(.type) { .type = "other" }
-
-  route_by_type:
-    type: route
-    inputs: ["normalize"]
-    route:
-      vuln: '.type == "vuln"'
-      audit: '.type == "audit"'
-      app:  '.type == "app"'
-      other: 'true'
-
-sinks:
-  os_vuln:
-    type: elasticsearch
-    inputs: ["route_by_type.vuln"]
-    endpoints: ["https://opensearch:9200"]
-    api_version: v7
-    auth: { strategy: basic, user: admin, password: admin }
-    tls: { ca_file: /etc/vector/tls/ca.crt, verify_certificate: true, verify_hostname: false }
-    bulk: { index: "vuln-%Y.%m.%d", action: index }
-
-  os_audit:
-    type: elasticsearch
-    inputs: ["route_by_type.audit"]
-    endpoints: ["https://opensearch:9200"]
-    api_version: v7
-    auth: { strategy: basic, user: admin, password: admin }
-    tls: { ca_file: /etc/vector/tls/ca.crt, verify_certificate: true, verify_hostname: false }
-    bulk: { index: "audit-%Y.%m.%d", action: index }
-
-  os_app:
-    type: elasticsearch
-    inputs: ["route_by_type.app"]
-    endpoints: ["https://opensearch:9200"]
-    api_version: v7
-    auth: { strategy: basic, user: admin, password: admin }
-    tls: { ca_file: /etc/vector/tls/ca.crt, verify_certificate: true, verify_hostname: false }
-    bulk: { index: "app-%Y.%m.%d", action: index }
-
-  os_other:
-    type: elasticsearch
-    inputs: ["route_by_type.other"]
-    endpoints: ["https://opensearch:9200"]
-    api_version: v7
-    auth: { strategy: basic, user: admin, password: admin }
-    tls: { ca_file: /etc/vector/tls/ca.crt, verify_certificate: true, verify_hostname: false }
-    bulk: { index: "other-%Y.%m.%d", action: index }
+docker exec -it rabbitmq rabbitmqadmin publish exchange=amq.default routing_key=events \
+  payload='{"stream":"a","message":"hello a"}' \
+  --username=dev --password=dev
+----
+curl --cacert tls/ca.crt -u admin:admin "https://localhost:9200/_cat/indices?v"
+-----
