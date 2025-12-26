@@ -11,3 +11,5 @@ kubectl patch felixconfiguration default --type merge -p '{
     ]
   }
 }'
+
+kubectl -n kube-system rollout restart ds calico-node
