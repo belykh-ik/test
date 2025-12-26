@@ -1,31 +1,51 @@
-# -------- build stage --------
-FROM gradle:8.7-jdk21 AS builder
+#!/usr/bin/env bash
 
-WORKDIR /home/gradle/project
+kubectl version --short
+kubectl cluster-info
+kubectl get nodes -o wide
 
-# 1) Сначала копируем только то, что влияет на зависимости (лучше кешируется)
-COPY gradlew gradlew.bat build.gradle settings.gradle gradle.properties ./
-COPY gradle/ gradle/
+kubectl -n kube-system get pods -o wide | egrep -i 'calico|typha'
+kubectl -n kube-system get ds,deploy,sts -o wide | egrep -i 'calico|typha'
+kubectl -n kube-system get events --sort-by=.lastTimestamp | egrep -i 'calico|typha|kube-proxy|cni|network' | tail -n 100
 
-# прогреем зависимости (если что-то упадёт из-за приватного nexus — можно убрать эту строку)
-RUN ./gradlew --no-daemon dependencies || true
+kubectl -n kube-system get ds calico-node \
+  -o jsonpath='{.spec.template.spec.containers[*].name}{" => "}{.spec.template.spec.containers[*].image}{"\n"}'
 
-# 2) Теперь исходники
-COPY src/ src/
+kubectl -n kube-system get deploy calico-kube-controllers \
+  -o jsonpath='{.spec.template.spec.containers[*].name}{" => "}{.spec.template.spec.containers[*].image}{"\n"}'
 
-# Собираем bootJar (у тебя archiveFileName = "app.jar")
-RUN ./gradlew --no-daemon clean bootJar -x test
+kubectl -n kube-system get deploy calico-typha \
+  -o jsonpath='{.spec.template.spec.containers[*].name}{" => "}{.spec.template.spec.containers[*].image}{"\n"}'
 
+kubectl -n tigera-operator get deploy tigera-operator \
+  -o jsonpath='{.spec.template.spec.containers[*].name}{" => "}{.spec.template.spec.containers[*].image}{"\n"}'
 
-# -------- runtime stage --------
-FROM openjdk:21-jdk-slim
+kubectl -n kube-system get pods -l k8s-app=calico-kube-controllers -o wide
+kubectl -n kube-system describe pod -l k8s-app=calico-kube-controllers
+kubectl -n kube-system logs -l k8s-app=calico-kube-controllers --all-containers --tail=200
+kubectl -n kube-system logs -l k8s-app=calico-kube-controllers --previous --all-containers --tail=200
 
-WORKDIR /app
+kubectl -n default delete pod curl-test --ignore-not-found
+kubectl -n default run curl-test --image=curlimages/curl:8.5.0 --restart=Never --command -- \
+  sh -c 'nslookup kubernetes.default.svc.cluster.local || true; \
+         curl -vk --connect-timeout 5 https://10.233.0.1:443/healthz || true; \
+         curl -vk --connect-timeout 5 https://kubernetes.default.svc/healthz || true'
+kubectl -n default logs curl-test --tail=200
+kubectl -n default delete pod curl-test --ignore-not-found
 
-COPY --from=builder /home/gradle/project/build/libs/app.jar /app/app.jar
+kubectl -n default get svc kubernetes -o wide
+kubectl -n default get endpoints kubernetes -o wide
+kubectl -n default get endpointslices -l kubernetes.io/service-name=kubernetes -o wide
 
-# Для OKD/OpenShift: контейнер часто стартует со случайным UID, важны права на группу 0
-RUN chgrp -R 0 /app && chmod -R g=u /app
+kubectl -n kube-system get ds kube-proxy -o wide
+kubectl -n kube-system logs -l k8s-app=kube-proxy --tail=200
+kubectl -n kube-system describe pod -l k8s-app=kube-proxy
 
-EXPOSE 8080
-ENTRYPOINT ["java","-jar","/app/app.jar"]
+kubectl -n kube-system get pods -l k8s-app=calico-node -o wide
+kubectl -n kube-system describe pod -l k8s-app=calico-node
+kubectl -n kube-system logs -l k8s-app=calico-node --all-containers --tail=200
+kubectl -n kube-system logs -l k8s-app=calico-node --previous --all-containers --tail=200
+
+kubectl get crd | egrep -i 'projectcalico|tigera|calico'
+kubectl get clusterinformation default -o yaml
+kubectl get clusterinformation -o wide
