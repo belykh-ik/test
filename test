@@ -1,4 +1,14 @@
-kubectl run -n kube-system net-debug --image=curlimages/curl:8.5.0 --restart=Never -- sleep 3600
+sudo ss -lntp | egrep ':(6443|2379|2380)\b' || true
+curl -k --max-time 2 https://127.0.0.1:6443/healthz ; echo
+curl -k --max-time 2 https://127.0.0.1:6443/livez ; echo
+curl -k --max-time 2 https://127.0.0.1:6443/readyz ; echo
 
-kubectl -n kube-system exec -it net-debug -- curl -k -m 3 https://10.233.0.1:443/healthz || true
-kubectl -n kube-system exec -it net-debug -- curl -k -m 3 https://10.191.71.130:6443/healthz || true
+
+sudo ls -la /etc/kubernetes/manifests/
+sudo crictl ps | egrep 'kube-apiserver|etcd|kube-controller|kube-scheduler' || true
+sudo crictl logs $(sudo crictl ps -q --name kube-apiserver) --tail=200
+sudo crictl logs $(sudo crictl ps -q --name etcd) --tail=200
+
+ip route get 10.191.71.130
+ping -c 2 10.191.71.130 || true
+nc -vz -w2 10.191.71.130 6443 || true
