@@ -1,8 +1,13 @@
-ip link show kube-ipvs0 || true
-ip -4 addr show kube-ipvs0 2>/dev/null || true
+kubectl get felixconfiguration default -o yaml
 
 
-sudo ipvsadm -Ln | egrep '10\.233\.0\.1:443|10\.191\.71\.130:6443' || true
-
-
-kubectl -n kube-system get ds kube-proxy -o yaml | egrep -n 'hostNetwork:|privileged:|hostPID:|NET_ADMIN|/lib/modules|/run/xtables.lock|mode:' -n
+kubectl patch felixconfiguration default --type merge -p '{
+  "spec": {
+    "failsafeInboundHostPorts": [
+      {"protocol":"tcp","port":6443}
+    ],
+    "failsafeOutboundHostPorts": [
+      {"protocol":"tcp","port":6443}
+    ]
+  }
+}'
