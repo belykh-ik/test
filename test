@@ -4,7 +4,7 @@
 # Проверяет работоспособность кластера с детальной диагностикой
 #
 
-set -e
+set +e  # Не останавливаться при ошибках - мы сами обрабатываем их
 
 # Цвета для вывода
 RED='\033[0;31m'
@@ -47,21 +47,26 @@ WARN_COUNT=0
 print_step "1" "Проверка доступа к кластеру"
 # =============================================================================
 
-if kubectl cluster-info &>/dev/null; then
+CLUSTER_INFO=$(kubectl cluster-info 2>&1)
+if [ $? -eq 0 ]; then
     print_ok "Доступ к Kubernetes API"
     ((PASS_COUNT++))
-    kubectl cluster-info | head -2
+    echo "$CLUSTER_INFO" | head -2
 else
     print_fail "Нет доступа к Kubernetes API" "kubectl cluster-info завершился с ошибкой"
     ((FAIL_COUNT++))
+    echo "$CLUSTER_INFO" | head -5
+    echo ""
+    echo "Проверка остановлена - без доступа к API дальнейшие тесты невозможны"
     exit 1
 fi
 
 echo ""
-if kubectl version --output=yaml &>/dev/null; then
+VERSION_OUTPUT=$(kubectl version --output=yaml 2>&1)
+if [ $? -eq 0 ]; then
     print_ok "Версии клиента и сервера получены"
     ((PASS_COUNT++))
-    kubectl version --output=json 2>/dev/null | grep -E '"gitVersion"' | head -2 || true
+    echo "$VERSION_OUTPUT" | grep -E '"gitVersion"' | head -2 || true
 else
     print_fail "Не удалось получить версию" "kubectl version завершился с ошибкой"
     ((FAIL_COUNT++))
@@ -72,11 +77,13 @@ print_step "2" "Проверка состояния нод"
 # =============================================================================
 
 NODES_COUNT=$(kubectl get nodes --no-headers 2>/dev/null | wc -l)
-NODES_READY=$(kubectl get nodes --no-headers 2>/dev/null | grep -c " Ready " || echo 0)
+NODES_READY=$(kubectl get nodes --no-headers 2>/dev/null | grep " Ready " | wc -l)
 
 if [ "$NODES_COUNT" -eq 0 ]; then
     print_fail "Ноды не найдены" "kubectl get nodes не вернул ни одной ноды"
     ((FAIL_COUNT++))
+    echo ""
+    echo "Проверка остановлена - без нод дальнейшие тесты невозможны"
     exit 1
 elif [ "$NODES_READY" -eq "$NODES_COUNT" ]; then
     print_ok "Все ноды ($NODES_COUNT) в состоянии Ready"
@@ -139,7 +146,7 @@ print_step "3" "Проверка системных компонентов (kube
 # =============================================================================
 
 SYSTEM_PODS=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | wc -l)
-SYSTEM_RUNNING=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | grep -c "Running" || echo 0)
+SYSTEM_RUNNING=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | grep "Running" | wc -l)
 
 if [ "$SYSTEM_PODS" -eq 0 ]; then
     print_fail "Системные поды не найдены" "В namespace kube-system нет подов"
@@ -164,14 +171,14 @@ for component in "${CRITICAL_COMPONENTS[@]}"; do
     POD_COUNT=$(kubectl get pods -n kube-system -l "k8s-app=$selector" --no-headers 2>/dev/null | wc -l)
     if [ "$POD_COUNT" -eq 0 ]; then
         # Попробуем альтернативный поиск
-        POD_COUNT=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | grep -c "$selector" || echo 0)
+        POD_COUNT=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | grep "$selector" | wc -l)
     fi
     
     if [ "$POD_COUNT" -eq 0 ]; then
         print_fail "$name не найден" "Компонент отсутствует в kube-system"
         ((FAIL_COUNT++))
     else
-        READY_COUNT=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | grep "$selector" | grep -c "Running" || echo 0)
+        READY_COUNT=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | grep "$selector" | grep "Running" | wc -l)
         if [ "$READY_COUNT" -eq "$POD_COUNT" ]; then
             print_ok "$name ($POD_COUNT pods Running)"
             ((PASS_COUNT++))
@@ -189,9 +196,9 @@ print_info "Проверка CNI плагина:"
 CNI_FOUND=false
 
 for cni in "calico" "flannel" "weave" "cilium"; do
-    CNI_COUNT=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | grep -ic "$cni" || echo 0)
+    CNI_COUNT=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | grep -i "$cni" | wc -l)
     if [ "$CNI_COUNT" -gt 0 ]; then
-        CNI_READY=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | grep -i "$cni" | grep -c "Running" || echo 0)
+        CNI_READY=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | grep -i "$cni" | grep "Running" | wc -l)
         if [ "$CNI_READY" -eq "$CNI_COUNT" ]; then
             print_ok "CNI: $cni ($CNI_COUNT pods Running)"
             ((PASS_COUNT++))
@@ -219,9 +226,10 @@ print_step "4" "Проверка сетевой связности (kube-proxy &
 # =============================================================================
 
 # Проверка kubernetes service
-if kubectl get svc kubernetes -n default &>/dev/null; then
-    KUBE_SVC_IP=$(kubectl get svc kubernetes -n default -o jsonpath='{.spec.clusterIP}')
-    KUBE_EP=$(kubectl get endpoints kubernetes -n default -o jsonpath='{.subsets[0].addresses[0].ip}')
+KUBE_SVC_CHECK=$(kubectl get svc kubernetes -n default 2>&1)
+if [ $? -eq 0 ]; then
+    KUBE_SVC_IP=$(kubectl get svc kubernetes -n default -o jsonpath='{.spec.clusterIP}' 2>/dev/null)
+    KUBE_EP=$(kubectl get endpoints kubernetes -n default -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null)
     
     if [ -n "$KUBE_SVC_IP" ] && [ -n "$KUBE_EP" ]; then
         print_ok "Kubernetes Service (ClusterIP: $KUBE_SVC_IP, Endpoint: $KUBE_EP)"
@@ -250,12 +258,15 @@ print_step "5" "Создание тестового namespace"
 kubectl delete ns "$NS" --ignore-not-found=true --timeout=30s &>/dev/null || true
 sleep 2
 
-if kubectl create ns "$NS" &>/dev/null; then
+NS_CREATE=$(kubectl create ns "$NS" 2>&1)
+if [ $? -eq 0 ]; then
     print_ok "Namespace '$NS' создан"
     ((PASS_COUNT++))
 else
-    print_fail "Не удалось создать namespace" "kubectl create ns завершился с ошибкой"
+    print_fail "Не удалось создать namespace" "$NS_CREATE"
     ((FAIL_COUNT++))
+    echo ""
+    echo "Проверка остановлена - без namespace дальнейшие тесты невозможны"
     exit 1
 fi
 
@@ -263,11 +274,13 @@ fi
 print_step "6" "Деплой тестового приложения"
 # =============================================================================
 
-if kubectl -n "$NS" create deploy hello --image=nginx:alpine --replicas=2 &>/dev/null; then
+DEPLOY_CREATE=$(kubectl -n "$NS" create deploy hello --image=nginx:alpine --replicas=2 2>&1)
+if [ $? -eq 0 ]; then
     print_info "Deployment 'hello' создан - ожидаем готовности..."
     
-    if kubectl -n "$NS" rollout status deploy/hello --timeout="${TIMEOUT}s" &>/dev/null; then
-        PODS_READY=$(kubectl -n "$NS" get pods -l app=hello --no-headers 2>/dev/null | grep -c "Running" || echo 0)
+    ROLLOUT_STATUS=$(kubectl -n "$NS" rollout status deploy/hello --timeout="${TIMEOUT}s" 2>&1)
+    if [ $? -eq 0 ]; then
+        PODS_READY=$(kubectl -n "$NS" get pods -l app=hello --no-headers 2>/dev/null | grep "Running" | wc -l)
         if [ "$PODS_READY" -eq 2 ]; then
             print_ok "Deployment готов - 2/2 подов Running"
             ((PASS_COUNT++))
@@ -284,7 +297,7 @@ if kubectl -n "$NS" create deploy hello --image=nginx:alpine --replicas=2 &>/dev
         kubectl -n "$NS" describe pods -l app=hello | grep -A 10 "Events:" || true
     fi
 else
-    print_fail "Не удалось создать Deployment" "kubectl create deploy завершился с ошибкой"
+    print_fail "Не удалось создать Deployment" "$DEPLOY_CREATE"
     ((FAIL_COUNT++))
 fi
 
@@ -295,9 +308,10 @@ kubectl -n "$NS" get pods -o wide
 print_step "7" "Проверка Service (ClusterIP)"
 # =============================================================================
 
-if kubectl -n "$NS" expose deploy hello --port=80 --target-port=80 &>/dev/null; then
-    SVC_IP=$(kubectl -n "$NS" get svc hello -o jsonpath='{.spec.clusterIP}')
-    EP_COUNT=$(kubectl -n "$NS" get endpoints hello -o jsonpath='{.subsets[*].addresses[*].ip}' | wc -w)
+SVC_CREATE=$(kubectl -n "$NS" expose deploy hello --port=80 --target-port=80 2>&1)
+if [ $? -eq 0 ]; then
+    SVC_IP=$(kubectl -n "$NS" get svc hello -o jsonpath='{.spec.clusterIP}' 2>/dev/null)
+    EP_COUNT=$(kubectl -n "$NS" get endpoints hello -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null | wc -w)
     
     if [ -n "$SVC_IP" ] && [ "$EP_COUNT" -eq 2 ]; then
         print_ok "Service создан (ClusterIP: $SVC_IP, Endpoints: $EP_COUNT)"
@@ -307,7 +321,7 @@ if kubectl -n "$NS" expose deploy hello --port=80 --target-port=80 &>/dev/null; 
         ((FAIL_COUNT++))
     fi
 else
-    print_fail "Не удалось создать Service" "kubectl expose завершился с ошибкой"
+    print_fail "Не удалось создать Service" "$SVC_CREATE"
     ((FAIL_COUNT++))
 fi
 
@@ -482,7 +496,7 @@ if [ -n "$INGRESS_NS" ]; then
     print_info "Найден Ingress Controller в namespace: $INGRESS_NS"
     
     INGRESS_PODS=$(kubectl get pods -n "$INGRESS_NS" --no-headers 2>/dev/null | wc -l)
-    INGRESS_RUNNING=$(kubectl get pods -n "$INGRESS_NS" --no-headers 2>/dev/null | grep -c "Running" || echo 0)
+    INGRESS_RUNNING=$(kubectl get pods -n "$INGRESS_NS" --no-headers 2>/dev/null | grep "Running" | wc -l)
     
     if [ "$INGRESS_RUNNING" -eq "$INGRESS_PODS" ] && [ "$INGRESS_PODS" -gt 0 ]; then
         print_ok "Ingress Controller работает ($INGRESS_RUNNING/$INGRESS_PODS подов Running)"
@@ -539,25 +553,27 @@ fi
 print_step "13" "Проверка Metrics Server"
 # =============================================================================
 
-if kubectl get deploy metrics-server -n kube-system &>/dev/null; then
-    METRICS_READY=$(kubectl get deploy metrics-server -n kube-system -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
+METRICS_CHECK=$(kubectl get deploy metrics-server -n kube-system 2>&1)
+if [ $? -eq 0 ]; then
+    METRICS_READY=$(kubectl get deploy metrics-server -n kube-system -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
     
-    if [ "$METRICS_READY" -gt 0 ]; then
+    if [ -n "$METRICS_READY" ] && [ "$METRICS_READY" -gt 0 ]; then
         print_ok "Metrics Server работает"
         ((PASS_COUNT++))
         
         # Проверяем получение метрик
-        sleep 5
-        if kubectl top nodes &>/dev/null; then
+        sleep 3
+        METRICS_NODES=$(kubectl top nodes 2>&1)
+        if [ $? -eq 0 ]; then
             print_ok "Метрики нод доступны"
             ((PASS_COUNT++))
-            kubectl top nodes
+            echo "$METRICS_NODES"
         else
             print_warning "Метрики нод недоступны - может требоваться время на сбор"
             ((WARN_COUNT++))
         fi
     else
-        print_fail "Metrics Server не готов" "ReadyReplicas: $METRICS_READY"
+        print_fail "Metrics Server не готов" "ReadyReplicas: ${METRICS_READY:-0}"
         ((FAIL_COUNT++))
     fi
 else
@@ -570,10 +586,12 @@ print_step "14" "Очистка тестовых ресурсов"
 # =============================================================================
 
 print_info "Удаляем тестовый namespace '$NS'..."
-if kubectl delete ns "$NS" --timeout=60s &>/dev/null; then
+DELETE_NS=$(kubectl delete ns "$NS" --timeout=60s 2>&1)
+if [ $? -eq 0 ]; then
     print_ok "Тестовые ресурсы удалены"
 else
     print_warning "Не удалось удалить namespace (возможно требуется больше времени)"
+    echo "$DELETE_NS" | head -3
 fi
 
 # =============================================================================
