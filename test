@@ -17,3 +17,70 @@ sudo ufw allow to 10.233.0.0/18
 
 # Перезагружаем правила
 sudo ufw reload
+
+
+kubectl get svc kubernetes
+kubectl get endpoints kubernetes
+
+kubectl get pods -n kube-system -l k8s-app=kube-proxy
+kubectl logs -n kube-system <kube-proxy-pod> --tail=50
+
+# В IP Pool
+kubectl get ippool -o yaml | grep -E "vxlanMode|ipipMode"
+
+# В calico-node переменных окружения
+kubectl get ds calico-node -n kube-system -o yaml | grep -E "CALICO_IPV4POOL"
+
+ip route show
+ip addr show
+
+# Для UFW
+sudo ufw status verbose
+
+# Для firewalld
+sudo firewall-cmd --list-all
+
+# Для чистого iptables
+sudo iptables -L -n -v
+sudo iptables -t nat -L -n -v
+
+curl -k https://localhost:6443
+# Должен вернуть {"kind":"Status","apiVersion":"v1",...}
+
+curl -k https://10.233.0.1:443
+# Если не работает - проблема с kube-proxy или firewall
+
+# Создаём тестовый под
+kubectl run test-pod --image=nicolaka/netshoot -it --rm -- bash
+
+# Внутри пода:
+curl -k https://kubernetes.default.svc.cluster.local
+curl -k https://10.233.0.1:443
+
+# Проверяем DNS
+nslookup kubernetes.default.svc.cluster.local
+
+Проблема 1: Поды не могут подключиться к API
+Симптомы:
+
+dial tcp 10.233.0.1:443: i/o timeout
+CoreDNS: Still waiting on: "kubernetes"
+
+Возможные причины:
+
+Firewall блокирует (твой случай!)
+
+Решение: настроить UFW/firewalld
+
+
+kube-proxy не работает
+
+Проверка: kubectl get pods -n kube-system | grep kube-proxy
+Решение: kubectl delete pod -n kube-system <kube-proxy-pod>
+
+
+IPVS модули не загружены
+
+Проверка: lsmod | grep ip_vs
+Решение: modprobe ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh
+
