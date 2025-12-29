@@ -1,15 +1,149 @@
-kubectl get felixconfiguration default -o yaml
+#!/bin/bash
 
+# Kubernetes Network Diagnostic Script
+# Проверяет сетевые компоненты и выводит результат в файл
 
-kubectl patch felixconfiguration default --type merge -p '{
-  "spec": {
-    "failsafeInboundHostPorts": [
-      {"protocol":"tcp","port":6443}
-    ],
-    "failsafeOutboundHostPorts": [
-      {"protocol":"tcp","port":6443}
-    ]
-  }
-}'
+OUTPUT_FILE="k8s_diagnostic_$(date +%Y%m%d_%H%M%S).txt"
 
-kubectl -n kube-system rollout restart ds calico-node
+echo "==================================================================" | tee $OUTPUT_FILE
+echo "Kubernetes Network Diagnostic Report" | tee -a $OUTPUT_FILE
+echo "Generated: $(date)" | tee -a $OUTPUT_FILE
+echo "==================================================================" | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+# 1. Проверка Kubernetes API Service
+echo "--- 1. Kubernetes API Service ---" | tee -a $OUTPUT_FILE
+kubectl get svc kubernetes 2>&1 | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+# 2. Проверка Endpoints
+echo "--- 2. Kubernetes API Endpoints ---" | tee -a $OUTPUT_FILE
+kubectl get endpoints kubernetes -o wide 2>&1 | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+# 3. Проверка kube-proxy
+echo "--- 3. Kube-proxy Status ---" | tee -a $OUTPUT_FILE
+kubectl get pods -n kube-system | grep kube-proxy | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+# 4. Логи kube-proxy (последние 30 строк)
+echo "--- 4. Kube-proxy Logs (last 30 lines) ---" | tee -a $OUTPUT_FILE
+KUBE_PROXY_POD=$(kubectl get pods -n kube-system -l k8s-app=kube-proxy -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+if [ -n "$KUBE_PROXY_POD" ]; then
+    kubectl logs -n kube-system $KUBE_PROXY_POD --tail=30 2>&1 | tee -a $OUTPUT_FILE
+else
+    echo "kube-proxy pod not found!" | tee -a $OUTPUT_FILE
+fi
+echo "" | tee -a $OUTPUT_FILE
+
+# 5. Все системные поды
+echo "--- 5. All kube-system Pods ---" | tee -a $OUTPUT_FILE
+kubectl get pods -n kube-system -o wide 2>&1 | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+# 6. Calico node статус
+echo "--- 6. Calico Node Status ---" | tee -a $OUTPUT_FILE
+kubectl get pods -n kube-system -l k8s-app=calico-node -o wide 2>&1 | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+# 7. IP Routes
+echo "--- 7. IP Routes ---" | tee -a $OUTPUT_FILE
+ip route show 2>&1 | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+# 8. IPTables правила для Kubernetes API
+echo "--- 8. IPTables Rules for 10.233.0.1 ---" | tee -a $OUTPUT_FILE
+sudo iptables-save 2>/dev/null | grep -i "10.233.0.1" | tee -a $OUTPUT_FILE
+if [ $? -ne 0 ]; then
+    echo "No iptables rules found for 10.233.0.1" | tee -a $OUTPUT_FILE
+fi
+echo "" | tee -a $OUTPUT_FILE
+
+# 9. IPTables NAT правила для KUBE-SERVICES
+echo "--- 9. IPTables KUBE-SERVICES Chain ---" | tee -a $OUTPUT_FILE
+sudo iptables-save -t nat 2>/dev/null | grep "KUBE-SERVICES" | head -20 | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+# 10. Проверка доступности API с хоста
+echo "--- 10. API Connectivity Test ---" | tee -a $OUTPUT_FILE
+echo "Testing https://10.233.0.1:443 ..." | tee -a $OUTPUT_FILE
+timeout 5 curl -k https://10.233.0.1:443 2>&1 | head -10 | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+echo "Testing https://localhost:6443 ..." | tee -a $OUTPUT_FILE
+timeout 5 curl -k https://localhost:6443 2>&1 | head -10 | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+# 11. Сетевые интерфейсы
+echo "--- 11. Network Interfaces ---" | tee -a $OUTPUT_FILE
+ip addr show 2>&1 | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+# 12. Calico IP Pool
+echo "--- 12. Calico IP Pool Configuration ---" | tee -a $OUTPUT_FILE
+kubectl get ippool -o yaml 2>&1 | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+# 13. Calico Node Environment Variables
+echo "--- 13. Calico Node Environment (VXLAN/IPIP settings) ---" | tee -a $OUTPUT_FILE
+kubectl get daemonset calico-node -n kube-system -o yaml 2>&1 | grep -A 2 -E "CALICO_IPV4POOL_VXLAN|CALICO_IPV4POOL_IPIP" | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+# 14. Calico Node Logs (последние 50 строк)
+echo "--- 14. Calico Node Logs (last 50 lines) ---" | tee -a $OUTPUT_FILE
+CALICO_NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+if [ -n "$CALICO_NODE_POD" ]; then
+    kubectl logs -n kube-system $CALICO_NODE_POD -c calico-node --tail=50 2>&1 | tee -a $OUTPUT_FILE
+else
+    echo "calico-node pod not found!" | tee -a $OUTPUT_FILE
+fi
+echo "" | tee -a $OUTPUT_FILE
+
+# 15. CoreDNS Logs (последние 20 строк)
+echo "--- 15. CoreDNS Logs (last 20 lines) ---" | tee -a $OUTPUT_FILE
+COREDNS_POD=$(kubectl get pods -n kube-system -l k8s-app=kube-dns -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+if [ -n "$COREDNS_POD" ]; then
+    kubectl logs -n kube-system $COREDNS_POD --tail=20 2>&1 | tee -a $OUTPUT_FILE
+else
+    echo "coredns pod not found!" | tee -a $OUTPUT_FILE
+fi
+echo "" | tee -a $OUTPUT_FILE
+
+# 16. Calico-kube-controllers Logs (последние 20 строк)
+echo "--- 16. Calico-kube-controllers Logs (last 20 lines) ---" | tee -a $OUTPUT_FILE
+CALICO_CTRL_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+if [ -n "$CALICO_CTRL_POD" ]; then
+    kubectl logs -n kube-system $CALICO_CTRL_POD --tail=20 2>&1 | tee -a $OUTPUT_FILE
+else
+    echo "calico-kube-controllers pod not found!" | tee -a $OUTPUT_FILE
+fi
+echo "" | tee -a $OUTPUT_FILE
+
+# 17. Firewalld/UFW Status
+echo "--- 17. Firewall Status ---" | tee -a $OUTPUT_FILE
+if command -v firewall-cmd &> /dev/null; then
+    echo "Firewalld status:" | tee -a $OUTPUT_FILE
+    sudo firewall-cmd --state 2>&1 | tee -a $OUTPUT_FILE
+    echo "Firewalld zones:" | tee -a $OUTPUT_FILE
+    sudo firewall-cmd --get-active-zones 2>&1 | tee -a $OUTPUT_FILE
+elif command -v ufw &> /dev/null; then
+    echo "UFW status:" | tee -a $OUTPUT_FILE
+    sudo ufw status 2>&1 | tee -a $OUTPUT_FILE
+else
+    echo "No firewalld or ufw detected" | tee -a $OUTPUT_FILE
+fi
+echo "" | tee -a $OUTPUT_FILE
+
+# 18. Проверка портов kube-apiserver
+echo "--- 18. Kube-apiserver Listening Ports ---" | tee -a $OUTPUT_FILE
+sudo ss -tlnp | grep -E '6443|443' 2>&1 | tee -a $OUTPUT_FILE
+echo "" | tee -a $OUTPUT_FILE
+
+echo "==================================================================" | tee -a $OUTPUT_FILE
+echo "Diagnostic complete! Results saved to: $OUTPUT_FILE" | tee -a $OUTPUT_FILE
+echo "==================================================================" | tee -a $OUTPUT_FILE
+
+echo ""
+echo "Файл сохранён: $OUTPUT_FILE"
+echo ""
+echo "Для просмотра результатов выполни: cat $OUTPUT_FILE"
