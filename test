@@ -1,109 +1,11 @@
-# keycloak-dev-local.yaml - Для локального доступа через port-forward
-
-global:
-  imageRegistry: nexus.test.ru
-  security:
-    allowInsecureImages: true
-
-image:
-  repository: bitnamilegacy/keycloak
-
-# Dev режим для локального доступа
-production: false
-proxy: edge
-httpEnabled: true
-
-# TLS отключен для локального доступа
-tls:
-  enabled: false
-
-# Внешняя PostgreSQL
-postgresql:
-  enabled: false
-
-externalDatabase:
-  host: postgresql.keycloak.svc.cluster.local
-  port: 5432
-  database: keycloak_db
-  user: keycloak_user
-  password: sXl9G4_3lsJ3
-
-# Администратор
-auth:
-  adminUser: admin
-  adminPassword: Akw03Lsp_s9ekS
-
-# Trusted CA
 trustedCertsExistingSecret: test-ca
 
-# Сервис
-service:
-  type: ClusterIP
-  ports:
-    http: 8080
+extraVolumes:
+  - name: custom-truststore
+    secret:
+      secretName: test-ca
 
-# Ingress отключен для локального доступа
-ingress:
-  enabled: false
-
-# Health checks
-livenessProbe:
-  enabled: true
-  initialDelaySeconds: 300
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 6
-  httpGet:
-    path: /
-    port: http
-
-readinessProbe:
-  enabled: true
-  initialDelaySeconds: 60
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 6
-  httpGet:
-    path: /realms/master
-    port: http
-
-startupProbe:
-  enabled: true
-  initialDelaySeconds: 30
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 60
-  httpGet:
-    path: /
-    port: http
-
-# Ресурсы
-resources:
-  requests:
-    memory: "512Mi"
-    cpu: "500m"
-  limits:
-    memory: "2Gi"
-    cpu: "2000m"
-
-# Переменные окружения для локального доступа
-extraEnvVars:
-  # Отключить строгую проверку hostname
-  - name: KC_HOSTNAME_STRICT
-    value: "false"
-  - name: KC_HOSTNAME_STRICT_HTTPS
-    value: "false"
-  # Разрешить localhost
-  - name: KC_HOSTNAME
-    value: "localhost"
-  - name: KC_PROXY
-    value: "edge"
-  - name: KC_HTTP_ENABLED
-    value: "true"
-  - name: KEYCLOAK_PRODUCTION
-    value: "false"
-  - name: KC_LOG_LEVEL
-    value: "INFO"
-
-# Количество реплик
-replicaCount: 1
+extraVolumeMounts:
+  - name: custom-truststore
+    mountPath: /opt/bitnami/keycloak/conf/truststores
+    readOnly: true
