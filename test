@@ -1,11 +1,5 @@
-trustedCertsExistingSecret: test-ca
-
-extraVolumes:
-  - name: custom-truststore
-    secret:
-      secretName: test-ca
-
-extraVolumeMounts:
-  - name: custom-truststore
-    mountPath: /opt/bitnami/keycloak/conf/truststores
-    readOnly: true
+# В конец keycloak-fixed-values.yaml
+hostAliases:
+  - ip: "10.191.73.27"  # Замените на реальный IP kc-test.test.ru
+    hostnames:
+      - "kc-test.test.ru"
