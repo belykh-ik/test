@@ -1,87 +1,48 @@
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: {{ .Values.app.name }}-config
+  name: {{ .Values.app.name }}
   namespace: {{ .Values.namespace }}
   labels:
     app: {{ .Values.app.name }}
-data:
-  # Database connection settings
-  SPRING_DATASOURCE_URL: "jdbc:postgresql://{{ .Values.postgres.host }}:{{ .Values.postgres.port }}/{{ .Values.postgres.database }}"
-  SPRING_DATASOURCE_USERNAME: "{{ .Values.postgres.username }}"
-  SPRING_DATASOURCE_DRIVER_CLASS_NAME: "org.postgresql.Driver"
-  
-  # Connection pool settings
-  SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "{{ .Values.postgres.hikari.maximumPoolSize }}"
-  SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "{{ .Values.postgres.hikari.minimumIdle }}"
-  SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: "{{ .Values.postgres.hikari.connectionTimeout }}"
-  SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT: "{{ .Values.postgres.hikari.idleTimeout }}"
-  SPRING_DATASOURCE_HIKARI_MAX_LIFETIME: "{{ .Values.postgres.hikari.maxLifetime }}"
-  
-  # JPA/Hibernate settings
-  SPRING_JPA_HIBERNATE_DDL_AUTO: "{{ .Values.jpa.hibernateDdlAuto }}"
-  SPRING_JPA_SHOW_SQL: "{{ .Values.jpa.showSql }}"
-  SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: "org.hibernate.dialect.PostgreSQLDialect"
-  SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: "{{ .Values.jpa.formatSql }}"
-  SPRING_JPA_PROPERTIES_HIBERNATE_USE_SQL_COMMENTS: "{{ .Values.jpa.useSqlComments }}"
-  
-  # Application settings
-  SERVER_PORT: "{{ .Values.app.port }}"
-  SPRING_APPLICATION_NAME: "{{ .Values.app.name }}"
-  
-  # Logging
-  LOGGING_LEVEL_ROOT: "{{ .Values.logging.level.root }}"
-  LOGGING_LEVEL_ORG_SPRINGFRAMEWORK: "{{ .Values.logging.level.springframework }}"
-  LOGGING_LEVEL_ORG_HIBERNATE: "{{ .Values.logging.level.hibernate }}"
----
-# Namespace
-namespace: default
-
-# Application settings
-app:
-  name: my-java-app
-  port: 8080
-  replicas: 2
-
-# PostgreSQL connection settings
-postgres:
-  host: postgres-service
-  port: 5432
-  database: myappdb
-  username: appuser
-  # Password должен храниться в Secret, не в ConfigMap!
-  # Используйте Kubernetes Secret для пароля
-  
-  # HikariCP connection pool settings
-  hikari:
-    maximumPoolSize: 10
-    minimumIdle: 5
-    connectionTimeout: 30000  # 30 seconds
-    idleTimeout: 600000       # 10 minutes
-    maxLifetime: 1800000      # 30 minutes
-
-# JPA/Hibernate settings
-jpa:
-  hibernateDdlAuto: validate  # Options: none, validate, update, create, create-drop
-  showSql: false
-  formatSql: true
-  useSqlComments: true
-
-# Logging levels
-logging:
-  level:
-    root: INFO
-    springframework: INFO
-    hibernate: WARN
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ .Values.app.name }}-secret
-  namespace: {{ .Values.namespace }}
-  labels:
-    app: {{ .Values.app.name }}
-type: Opaque
-stringData:
-  SPRING_DATASOURCE_PASSWORD: "your-postgres-password-here"
----
+spec:
+  replicas: {{ .Values.app.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.app.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.app.name }}
+    spec:
+      containers:
+      - name: {{ .Values.app.name }}
+        image: your-java-app:latest
+        ports:
+        - containerPort: {{ .Values.app.port }}
+        envFrom:
+        # Загружаем все переменные из ConfigMap
+        - configMapRef:
+            name: {{ .Values.app.name }}-config
+        # Загружаем пароль из Secret
+        - secretRef:
+            name: {{ .Values.app.name }}-secret
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: {{ .Values.app.port }}
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: {{ .Values.app.port }}
+          initialDelaySeconds: 30
+          periodSeconds: 5
