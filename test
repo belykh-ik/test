@@ -1,12 +1,18 @@
 # External Services для подключения к Docker контейнерам
-# ВАЖНО: Узнай IP адрес Docker хоста и замени 192.168.1.100 на реальный IP
+# На основе docker ps вывода:
+# - cluster_dms_db: 0.0.0.0:5445->5432/tcp
+# - digital_db: 0.0.0.0:5444->5432/tcp
+# - cluster_dms_redis: 0.0.0.0:6379->6379/tcp (общий для обоих)
+# - cluster_dms_rabbitmq: 5672,15672 (общий для обоих)
+
+# ВАЖНО: Замени IP 192.168.1.100 на реальный IP Docker хоста!
 
 ---
 # ==========================================
 # CLUSTER NETWORK SERVICES
 # ==========================================
 
-# Cluster PostgreSQL External Service
+# Cluster PostgreSQL External Service (порт 5445 на хосте)
 apiVersion: v1
 kind: Service
 metadata:
@@ -14,10 +20,9 @@ metadata:
   labels:
     app: cluster-postgres
 spec:
-  type: ClusterIP
+  clusterIP: None  # Headless service
   ports:
   - port: 5432
-    targetPort: 5432
     protocol: TCP
     name: postgres
 ---
@@ -29,11 +34,11 @@ subsets:
   - addresses:
       - ip: 192.168.1.100  # ЗАМЕНИ на IP Docker хоста
     ports:
-      - port: 5432
+      - port: 5445  # Внешний порт из docker: 0.0.0.0:5445->5432/tcp
         name: postgres
 
 ---
-# Cluster Redis External Service
+# Cluster Redis External Service (порт 6379 - общий)
 apiVersion: v1
 kind: Service
 metadata:
@@ -41,10 +46,9 @@ metadata:
   labels:
     app: cluster-redis
 spec:
-  type: ClusterIP
+  clusterIP: None
   ports:
   - port: 6379
-    targetPort: 6379
     protocol: TCP
     name: redis
 ---
@@ -56,11 +60,11 @@ subsets:
   - addresses:
       - ip: 192.168.1.100  # ЗАМЕНИ на IP Docker хоста
     ports:
-      - port: 6379
+      - port: 6379  # cluster_dms_redis: 0.0.0.0:6379->6379/tcp
         name: redis
 
 ---
-# Cluster RabbitMQ External Service
+# Cluster RabbitMQ External Service (общий контейнер cluster_dms_rabbitmq)
 apiVersion: v1
 kind: Service
 metadata:
@@ -68,14 +72,12 @@ metadata:
   labels:
     app: cluster-rabbitmq
 spec:
-  type: ClusterIP
+  clusterIP: None
   ports:
   - port: 5672
-    targetPort: 5672
     protocol: TCP
     name: amqp
   - port: 15672
-    targetPort: 15672
     protocol: TCP
     name: management
 ---
@@ -97,7 +99,7 @@ subsets:
 # DIGITAL NETWORK SERVICES
 # ==========================================
 
-# Digital PostgreSQL External Service
+# Digital PostgreSQL External Service (порт 5444 на хосте)
 apiVersion: v1
 kind: Service
 metadata:
@@ -105,10 +107,9 @@ metadata:
   labels:
     app: digital-postgres
 spec:
-  type: ClusterIP
+  clusterIP: None
   ports:
   - port: 5432
-    targetPort: 5432
     protocol: TCP
     name: postgres
 ---
@@ -118,13 +119,13 @@ metadata:
   name: digital-postgres-external
 subsets:
   - addresses:
-      - ip: 192.168.1.100  # ЗАМЕНИ на IP Docker хоста (может быть другой IP если на другом сервере)
+      - ip: 192.168.1.100  # ЗАМЕНИ на IP Docker хоста
     ports:
-      - port: 5444  # Порт из docker-compose для digital БД
+      - port: 5444  # Внешний порт из docker: 0.0.0.0:5444->5432/tcp
         name: postgres
 
 ---
-# Digital Redis External Service
+# Digital Redis External Service (тот же контейнер cluster_dms_redis)
 apiVersion: v1
 kind: Service
 metadata:
@@ -132,10 +133,9 @@ metadata:
   labels:
     app: digital-redis
 spec:
-  type: ClusterIP
+  clusterIP: None
   ports:
   - port: 6379
-    targetPort: 6379
     protocol: TCP
     name: redis
 ---
@@ -147,11 +147,11 @@ subsets:
   - addresses:
       - ip: 192.168.1.100  # ЗАМЕНИ на IP Docker хоста
     ports:
-      - port: 6379
+      - port: 6379  # cluster_dms_redis: 0.0.0.0:6379->6379/tcp
         name: redis
 
 ---
-# Digital RabbitMQ External Service
+# Digital RabbitMQ External Service (тот же контейнер cluster_dms_rabbitmq)
 apiVersion: v1
 kind: Service
 metadata:
@@ -159,14 +159,12 @@ metadata:
   labels:
     app: digital-rabbitmq
 spec:
-  type: ClusterIP
+  clusterIP: None
   ports:
   - port: 5672
-    targetPort: 5672
     protocol: TCP
     name: amqp
   - port: 15672
-    targetPort: 15672
     protocol: TCP
     name: management
 ---
@@ -182,30 +180,3 @@ subsets:
         name: amqp
       - port: 15672
         name: management
-
----
-# Digital Nginx External Service (если понадобится обращаться к нему из Kubernetes)
-apiVersion: v1
-kind: Service
-metadata:
-  name: digital-nginx-external
-  labels:
-    app: digital-nginx
-spec:
-  type: ClusterIP
-  ports:
-  - port: 80
-    targetPort: 80
-    protocol: TCP
-    name: http
----
-apiVersion: v1
-kind: Endpoints
-metadata:
-  name: digital-nginx-external
-subsets:
-  - addresses:
-      - ip: 192.168.1.100  # ЗАМЕНИ на IP Docker хоста
-    ports:
-      - port: 80  # Внешний порт 80:80 из docker-compose
-        name: http
