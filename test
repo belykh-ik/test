@@ -1,73 +1,73 @@
 ---
-# Cluster DMS API Deployment
+# Digital API Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cluster-dms-api
+  name: digital-api
   labels:
-    app: cluster-dms-api
+    app: digital-api
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: cluster-dms-api
+      app: digital-api
   template:
     metadata:
       labels:
-        app: cluster-dms-api
+        app: digital-api
     spec:
       containers:
       - name: api
-        image: nexus.sogaz.ru/cluster-dms/cluster_dms_api:latest  # ЗАМЕНИ на реальный образ
+        image: nexus.sogaz.ru/digital/digital_api:latest  # ЗАМЕНИ на реальный образ
         ports:
         - containerPort: 8000
           name: http
         env:
         - name: APP_PORT
           value: "8000"
-        # PostgreSQL connection (из cluster docker-compose)
+        # PostgreSQL connection (из digital docker-compose)
         - name: POSTGRES_HOST
-          value: "cluster-postgres-external"
+          value: "digital-postgres-external"
         - name: POSTGRES_PORT
           value: "5432"
         - name: POSTGRES_DB
           valueFrom:
             configMapKeyRef:
-              name: cluster-api-config
+              name: digital-api-config
               key: POSTGRES_DATABASE
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
-              name: cluster-api-secrets
+              name: digital-api-secrets
               key: postgres_user
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: cluster-api-secrets
+              name: digital-api-secrets
               key: postgres_password
         # Redis connection
         - name: REDIS_HOST
-          value: "cluster-redis-external"
+          value: "digital-redis-external"
         - name: REDIS_PORT
           value: "6379"
         # RabbitMQ connection
         - name: RABBITMQ_HOST
-          value: "cluster-rabbitmq-external"
+          value: "digital-rabbitmq-external"
         - name: RABBITMQ_PORT
           value: "5672"
         - name: RABBIT_USERNAME
           valueFrom:
             secretKeyRef:
-              name: cluster-api-secrets
+              name: digital-api-secrets
               key: rabbitmq_user
         - name: RABBIT_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: cluster-api-secrets
+              name: digital-api-secrets
               key: rabbitmq_password
         envFrom:
         - configMapRef:
-            name: cluster-api-config
+            name: digital-api-config
             optional: true
         resources:
           requests:
@@ -97,13 +97,13 @@ spec:
       - name: nexus-pull-secret
 
 ---
-# Service для Cluster API
+# Service для Digital API
 apiVersion: v1
 kind: Service
 metadata:
-  name: cluster-dms-api
+  name: digital-api
   labels:
-    app: cluster-dms-api
+    app: digital-api
 spec:
   type: ClusterIP
   ports:
@@ -112,27 +112,27 @@ spec:
     protocol: TCP
     name: http
   selector:
-    app: cluster-dms-api
+    app: digital-api
 
 ---
-# ConfigMap для Cluster API
+# ConfigMap для Digital API
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cluster-api-config
+  name: digital-api-config
 data:
-  POSTGRES_DATABASE: "cluster_dms_db"  # ЗАМЕНИ на реальное имя БД
+  POSTGRES_DATABASE: "digital_db"  # ЗАМЕНИ на реальное имя БД
   LOG_LEVEL: "INFO"
 
 ---
-# Secrets для Cluster API
+# Secrets для Digital API
 apiVersion: v1
 kind: Secret
 metadata:
-  name: cluster-api-secrets
+  name: digital-api-secrets
 type: Opaque
 stringData:
   postgres_user: "postgres"
-  postgres_password: "your_cluster_postgres_password"  # ЗАМЕНИ
+  postgres_password: "your_digital_postgres_password"  # ЗАМЕНИ
   rabbitmq_user: "guest"
   rabbitmq_password: "guest"  # ЗАМЕНИ
