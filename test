@@ -1,182 +1,138 @@
-# External Services для подключения к Docker контейнерам
-# На основе docker ps вывода:
-# - cluster_dms_db: 0.0.0.0:5445->5432/tcp
-# - digital_db: 0.0.0.0:5444->5432/tcp
-# - cluster_dms_redis: 0.0.0.0:6379->6379/tcp (общий для обоих)
-# - cluster_dms_rabbitmq: 5672,15672 (общий для обоих)
-
-# ВАЖНО: Замени IP 192.168.1.100 на реальный IP Docker хоста!
+---
+# Cluster DMS API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-dms-api
+  labels:
+    app: cluster-dms-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cluster-dms-api
+  template:
+    metadata:
+      labels:
+        app: cluster-dms-api
+    spec:
+      containers:
+      - name: api
+        image: nexus.sogaz.ru/cluster-dms/cluster_dms_api:latest  # ЗАМЕНИ на реальный образ
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: APP_PORT
+          value: "8000"
+        # PostgreSQL connection (из cluster docker-compose)
+        - name: POSTGRES_HOST
+          value: "cluster-postgres-external"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: cluster-api-config
+              key: POSTGRES_DATABASE
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: cluster-api-secrets
+              key: postgres_user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cluster-api-secrets
+              key: postgres_password
+        # Redis connection
+        - name: REDIS_HOST
+          value: "cluster-redis-external"
+        - name: REDIS_PORT
+          value: "6379"
+        # RabbitMQ connection
+        - name: RABBITMQ_HOST
+          value: "cluster-rabbitmq-external"
+        - name: RABBITMQ_PORT
+          value: "5672"
+        - name: RABBIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: cluster-api-secrets
+              key: rabbitmq_user
+        - name: RABBIT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cluster-api-secrets
+              key: rabbitmq_password
+        envFrom:
+        - configMapRef:
+            name: cluster-api-config
+            optional: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+      restartPolicy: Always
+      imagePullSecrets:
+      - name: nexus-pull-secret
 
 ---
-# ==========================================
-# CLUSTER NETWORK SERVICES
-# ==========================================
-
-# Cluster PostgreSQL External Service (порт 5445 на хосте)
+# Service для Cluster API
 apiVersion: v1
 kind: Service
 metadata:
-  name: cluster-postgres-external
+  name: cluster-dms-api
   labels:
-    app: cluster-postgres
+    app: cluster-dms-api
 spec:
-  clusterIP: None  # Headless service
+  type: ClusterIP
   ports:
-  - port: 5432
+  - port: 8000
+    targetPort: 8000
     protocol: TCP
-    name: postgres
----
-apiVersion: v1
-kind: Endpoints
-metadata:
-  name: cluster-postgres-external
-subsets:
-  - addresses:
-      - ip: 192.168.1.100  # ЗАМЕНИ на IP Docker хоста
-    ports:
-      - port: 5445  # Внешний порт из docker: 0.0.0.0:5445->5432/tcp
-        name: postgres
+    name: http
+  selector:
+    app: cluster-dms-api
 
 ---
-# Cluster Redis External Service (порт 6379 - общий)
+# ConfigMap для Cluster API
 apiVersion: v1
-kind: Service
+kind: ConfigMap
 metadata:
-  name: cluster-redis-external
-  labels:
-    app: cluster-redis
-spec:
-  clusterIP: None
-  ports:
-  - port: 6379
-    protocol: TCP
-    name: redis
----
-apiVersion: v1
-kind: Endpoints
-metadata:
-  name: cluster-redis-external
-subsets:
-  - addresses:
-      - ip: 192.168.1.100  # ЗАМЕНИ на IP Docker хоста
-    ports:
-      - port: 6379  # cluster_dms_redis: 0.0.0.0:6379->6379/tcp
-        name: redis
+  name: cluster-api-config
+data:
+  POSTGRES_DATABASE: "cluster_dms_db"  # ЗАМЕНИ на реальное имя БД
+  LOG_LEVEL: "INFO"
 
 ---
-# Cluster RabbitMQ External Service (общий контейнер cluster_dms_rabbitmq)
+# Secrets для Cluster API
 apiVersion: v1
-kind: Service
+kind: Secret
 metadata:
-  name: cluster-rabbitmq-external
-  labels:
-    app: cluster-rabbitmq
-spec:
-  clusterIP: None
-  ports:
-  - port: 5672
-    protocol: TCP
-    name: amqp
-  - port: 15672
-    protocol: TCP
-    name: management
----
-apiVersion: v1
-kind: Endpoints
-metadata:
-  name: cluster-rabbitmq-external
-subsets:
-  - addresses:
-      - ip: 192.168.1.100  # ЗАМЕНИ на IP Docker хоста
-    ports:
-      - port: 5672
-        name: amqp
-      - port: 15672
-        name: management
-
----
-# ==========================================
-# DIGITAL NETWORK SERVICES
-# ==========================================
-
-# Digital PostgreSQL External Service (порт 5444 на хосте)
-apiVersion: v1
-kind: Service
-metadata:
-  name: digital-postgres-external
-  labels:
-    app: digital-postgres
-spec:
-  clusterIP: None
-  ports:
-  - port: 5432
-    protocol: TCP
-    name: postgres
----
-apiVersion: v1
-kind: Endpoints
-metadata:
-  name: digital-postgres-external
-subsets:
-  - addresses:
-      - ip: 192.168.1.100  # ЗАМЕНИ на IP Docker хоста
-    ports:
-      - port: 5444  # Внешний порт из docker: 0.0.0.0:5444->5432/tcp
-        name: postgres
-
----
-# Digital Redis External Service (тот же контейнер cluster_dms_redis)
-apiVersion: v1
-kind: Service
-metadata:
-  name: digital-redis-external
-  labels:
-    app: digital-redis
-spec:
-  clusterIP: None
-  ports:
-  - port: 6379
-    protocol: TCP
-    name: redis
----
-apiVersion: v1
-kind: Endpoints
-metadata:
-  name: digital-redis-external
-subsets:
-  - addresses:
-      - ip: 192.168.1.100  # ЗАМЕНИ на IP Docker хоста
-    ports:
-      - port: 6379  # cluster_dms_redis: 0.0.0.0:6379->6379/tcp
-        name: redis
-
----
-# Digital RabbitMQ External Service (тот же контейнер cluster_dms_rabbitmq)
-apiVersion: v1
-kind: Service
-metadata:
-  name: digital-rabbitmq-external
-  labels:
-    app: digital-rabbitmq
-spec:
-  clusterIP: None
-  ports:
-  - port: 5672
-    protocol: TCP
-    name: amqp
-  - port: 15672
-    protocol: TCP
-    name: management
----
-apiVersion: v1
-kind: Endpoints
-metadata:
-  name: digital-rabbitmq-external
-subsets:
-  - addresses:
-      - ip: 192.168.1.100  # ЗАМЕНИ на IP Docker хоста
-    ports:
-      - port: 5672
-        name: amqp
-      - port: 15672
-        name: management
+  name: cluster-api-secrets
+type: Opaque
+stringData:
+  postgres_user: "postgres"
+  postgres_password: "your_cluster_postgres_password"  # ЗАМЕНИ
+  rabbitmq_user: "guest"
+  rabbitmq_password: "guest"  # ЗАМЕНИ
