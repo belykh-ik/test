@@ -1,21 +1,114 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-# ====== НАСТРОЙКИ ======
-GIT_URL="https://git.example.com/vendor/project.git"
-USERNAME="contractor-user"
-TOKEN="glpat-xxxxxxxxxxxxxxxx"
+# ===================== НАСТРОЙКИ =====================
+# URL репозитория вендора (https)
+VENDOR_URL="${VENDOR_URL:-https://git.vendor.example.com/group/cvm.git}"
+# Какая ветка вендора является "main" (может быть master/main/release/*)
+VENDOR_BRANCH="${VENDOR_BRANCH:-main}"
 
-DEST_DIR="project"
+# Ветки в НАШЕМ репозитории (origin)
+OUR_VENDOR_MAIN_BRANCH="${OUR_VENDOR_MAIN_BRANCH:-vendor/main}"
+OUR_VENDOR_CHANGES_BRANCH="${OUR_VENDOR_CHANGES_BRANCH:-vendor/changes}"
 
-# ====== ПРОВЕРКИ ======
-if [[ -d "$DEST_DIR" ]]; then
-  echo "❌ Директория $DEST_DIR уже существует"
-  exit 1
+# Реф, где мы храним "последнюю синхронизированную версию" вендора (commit hash)
+LAST_SYNC_REF="${LAST_SYNC_REF:-refs/tags/vendor/last_synced}"
+
+# Аутентификация (username + token)
+GIT_USERNAME="${GIT_USERNAME:-}"
+GIT_TOKEN="${GIT_TOKEN:-}"
+
+# =====================================================
+
+die() { echo "❌ $*" >&2; exit 1; }
+
+if [[ -z "${GIT_USERNAME}" || -z "${GIT_TOKEN}" ]]; then
+  die "Не заданы GIT_USERNAME/GIT_TOKEN"
 fi
 
-# ====== КЛОНИРОВАНИЕ ======
-echo "▶ Клонирую репозиторий..."
-git clone "https://${USERNAME}:${TOKEN}@${GIT_URL#https://}" "$DEST_DIR"
+# Чтобы токен не светился в командах/логах:
+set +x
 
-echo "✅ Репозиторий успешно скачан в $DEST_DIR"
+# Нормализуем URL для безопасного клона через https://user:token@host/...
+VENDOR_URL_AUTH="https://${GIT_USERNAME}:${GIT_TOKEN}@${VENDOR_URL#https://}"
+
+# Проверим, что мы в git-репозитории
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "Запусти из git-репозитория"
+
+# Добавляем/обновляем remote vendor
+if git remote get-url vendor >/dev/null 2>&1; then
+  git remote set-url vendor "$VENDOR_URL_AUTH" >/dev/null
+else
+  git remote add vendor "$VENDOR_URL_AUTH" >/dev/null
+fi
+
+echo "▶ Fetch из вендора ($VENDOR_BRANCH)..."
+git fetch --prune vendor "+refs/heads/${VENDOR_BRANCH}:refs/remotes/vendor/${VENDOR_BRANCH}" >/dev/null
+
+V_NEW="$(git rev-parse "refs/remotes/vendor/${VENDOR_BRANCH}")"
+
+# Узнаем, что считаем "предыдущей предоставленной версией"
+if git show-ref --verify --quiet "${LAST_SYNC_REF}"; then
+  V_OLD="$(git rev-parse "${LAST_SYNC_REF}")"
+else
+  V_OLD=""
+fi
+
+if [[ -n "$V_OLD" && "$V_NEW" == "$V_OLD" ]]; then
+  echo "✅ У вендора нет новых изменений (commit: $V_NEW). Выход."
+  exit 0
+fi
+
+echo "▶ Новый commit вендора: $V_NEW"
+if [[ -n "$V_OLD" ]]; then
+  echo "▶ Предыдущая зафиксированная версия: $V_OLD"
+else
+  echo "▶ Предыдущая версия не найдена — это первая синхронизация."
+fi
+
+# -----------------------------------------------------
+# МЕСТО №2: vendor/main — точная копия ветки вендора
+# -----------------------------------------------------
+echo "▶ Обновляю ${OUR_VENDOR_MAIN_BRANCH} (полный срез)..."
+git checkout -B "${OUR_VENDOR_MAIN_BRANCH}" "$V_NEW" >/dev/null
+git push -f origin "${OUR_VENDOR_MAIN_BRANCH}:${OUR_VENDOR_MAIN_BRANCH}" >/dev/null
+
+# -----------------------------------------------------
+# МЕСТО №1: vendor/changes — только новые коммиты
+# Логика:
+#  - если есть V_OLD -> создаем ветку от V_OLD и чери-пикаем диапазон V_OLD..V_NEW
+#  - если V_OLD нет -> changes = первая версия целиком (для первичной загрузки)
+# -----------------------------------------------------
+echo "▶ Обновляю ${OUR_VENDOR_CHANGES_BRANCH} (только дельта)..."
+
+if [[ -z "$V_OLD" ]]; then
+  # первая синхронизация
+  git checkout -B "${OUR_VENDOR_CHANGES_BRANCH}" "$V_NEW" >/dev/null
+else
+  # Проверка, что V_OLD является предком V_NEW (ожидаем линейную историю вендора)
+  if ! git merge-base --is-ancestor "$V_OLD" "$V_NEW"; then
+    die "История вендора нелинейна: $V_OLD не является предком $V_NEW. Нужна стратегия (merge/rebase) под ваш кейс."
+  fi
+
+  # Создаем ветку от старого коммита и чери-пикаем новые коммиты
+  git checkout -B "${OUR_VENDOR_CHANGES_BRANCH}" "$V_OLD" >/dev/null
+
+  # Чери-пикаем диапазон изменений
+  # --keep-redundant-commits полезен, если есть пустые после применений
+  git cherry-pick --keep-redundant-commits "$V_OLD..$V_NEW"
+fi
+
+git push -f origin "${OUR_VENDOR_CHANGES_BRANCH}:${OUR_VENDOR_CHANGES_BRANCH}" >/dev/null
+
+# -----------------------------------------------------
+# Обновляем last_synced на новый коммит
+# -----------------------------------------------------
+echo "▶ Обновляю ${LAST_SYNC_REF} -> $V_NEW"
+# Тег в CI удобно пушить как обычный annotated/lightweight tag
+git tag -f vendor/last_synced "$V_NEW" >/dev/null
+git push -f origin "refs/tags/vendor/last_synced" >/dev/null
+
+echo "✅ Готово:
+  - ${OUR_VENDOR_MAIN_BRANCH}   = полный срез вендора
+  - ${OUR_VENDOR_CHANGES_BRANCH}= дельта изменений (с $V_OLD до $V_NEW)
+  - vendor/last_synced          = $V_NEW"
