@@ -1,121 +1,90 @@
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cluster-web-nginx-config
-  namespace: test-services
-data:
-  default.conf: |
-    upstream backend {
-      server cluster-dms-api:8000;
-    }
+#!/bin/bash
+# quick-rebuild.sh
+# Быстрая пересборка и деплой обоих API без вопросов
 
-    server {
-      listen 80;
-      server_name localhost;
-      client_max_body_size 10M;
+set -e
 
-      root /static;
-      index login.html;
+echo "=== Быстрая пересборка и деплой ==="
 
-      location /api/ {
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_request_buffering off;
+# Конфигурация (измени если нужно)
+CLUSTER_API_PATH="${1:-./cluster_api}"
+DIGITAL_API_PATH="${2:-./digital_api}"
+NGINX_WEB_PATH="${3:-./nginx_web}"
+NAMESPACE="${4:-dms-apis}"
 
-        gzip off;
+CLUSTER_IMAGE="backend-clusters-dms-api:latest"
+DIGITAL_IMAGE="digitalservices-api:latest"
+NGINX_IMAGE="backend-clusters-dms-web:latest"
 
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
+K8S_CMD="kubectl"
+command -v oc &> /dev/null && K8S_CMD="oc"
 
-        proxy_connect_timeout 60s;
-        proxy_read_timeout 60s;
-        proxy_send_timeout 60s;
+echo ""
+echo "Конфигурация:"
+echo "  Cluster API: $CLUSTER_API_PATH"
+echo "  Digital API: $DIGITAL_API_PATH"
+echo "  Nginx Web: $NGINX_WEB_PATH"
+echo "  Namespace: $NAMESPACE"
+echo ""
 
-        proxy_pass http://backend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+# Cluster API
+if [ -d "$CLUSTER_API_PATH" ]; then
+    echo "=== Сборка Cluster API ==="
+    cd "$CLUSTER_API_PATH"
+    docker build -t "$CLUSTER_IMAGE" .
+    cd - > /dev/null
+    
+    echo "=== Загрузка в K8s ==="
+    docker save "$CLUSTER_IMAGE" | sudo ctr -n k8s.io images import -
+    
+    echo "=== Обновление deployment ==="
+    $K8S_CMD rollout restart deployment/cluster-dms-api -n "$NAMESPACE"
+    echo ""
+else
+    echo "⚠ Директория $CLUSTER_API_PATH не найдена, пропускаем Cluster API"
+fi
 
-        proxy_set_header X-Accel-Buffering no;
-      }
+# Digital API
+if [ -d "$DIGITAL_API_PATH" ]; then
+    echo "=== Сборка Digital API ==="
+    cd "$DIGITAL_API_PATH"
+    docker build -t "$DIGITAL_IMAGE" .
+    cd - > /dev/null
+    
+    echo "=== Загрузка в K8s ==="
+    docker save "$DIGITAL_IMAGE" | sudo ctr -n k8s.io images import -
+    
+    echo "=== Обновление deployment ==="
+    $K8S_CMD rollout restart deployment/digital-api -n "$NAMESPACE"
+    echo ""
+else
+    echo "⚠ Директория $DIGITAL_API_PATH не найдена, пропускаем Digital API"
+fi
 
-      location ~ ^/(docs|redoc|openapi\.json) {
-        proxy_pass http://backend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Prefix /;
-      }
+# Nginx Web
+if [ -d "$NGINX_WEB_PATH" ]; then
+    echo "=== Сборка Nginx Web (статика) ==="
+    cd "$NGINX_WEB_PATH"
+    docker build -t "$NGINX_IMAGE" .
+    cd - > /dev/null
+    
+    echo "=== Загрузка в K8s ==="
+    docker save "$NGINX_IMAGE" | sudo ctr -n k8s.io images import -
+    
+    echo "=== Обновление deployment ==="
+    $K8S_CMD rollout restart deployment/dms-nginx -n "$NAMESPACE"
+    echo ""
+else
+    echo "⚠ Директория $NGINX_WEB_PATH не найдена, пропускаем Nginx Web"
+fi
 
-      location ~* \.(css|js|jpg|jpeg|png|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        root /static;
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-        access_log off;
-      }
+echo "=== Ожидание готовности подов ==="
+$K8S_CMD rollout status deployment/cluster-dms-api -n "$NAMESPACE" --timeout=120s || true
+$K8S_CMD rollout status deployment/digital-api -n "$NAMESPACE" --timeout=120s || true
+$K8S_CMD rollout status deployment/dms-nginx -n "$NAMESPACE" --timeout=120s || true
 
-      location = /excel {
-        root /static;
-        try_files /excel.html =404;
-      }
-
-      location = / {
-        root /static;
-        try_files /login.html =404;
-      }
-
-      location / {
-        root /static;
-        try_files $uri $uri/ /login.html;
-      }
-    }
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: cluster-web
-  namespace: test-services
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: cluster-web
-  template:
-    metadata:
-      labels:
-        app: cluster-web
-    spec:
-      containers:
-        - name: nginx
-          image: REPLACE_ME_WITH_CLUSTER_WEB_IMAGE
-          ports:
-            - containerPort: 80
-              name: http
-          volumeMounts:
-            - name: nginx-config
-              mountPath: /etc/nginx/conf.d/default.conf
-              subPath: default.conf
-      volumes:
-        - name: nginx-config
-          configMap:
-            name: cluster-web-nginx-config
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: cluster-web
-  namespace: test-services
-spec:
-  selector:
-    app: cluster-web
-  ports:
-    - name: http
-      port: 80
-      targetPort: 80
-  type: ClusterIP
+echo ""
+echo "✓ Готово!"
+echo ""
+echo "Статус подов:"
+$K8S_CMD get pods -n "$NAMESPACE" -l 'app in (cluster-dms-api,digital-api,dms-nginx)'
