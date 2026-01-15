@@ -2,95 +2,81 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: nginx-proxy-config
+  name: digital-web-nginx-config
   namespace: test-services
 data:
   default.conf: |
+    upstream backend {
+      server digital-api:8000;
+    }
+
     server {
       listen 80;
       server_name localhost;
+      client_max_body_size 10M;
 
-      location = /healthz {
-        add_header Content-Type text/plain;
-        return 200 "ok\n";
-      }
+      root /static;
+      index login.html;
 
-      location /cluster/ {
-        proxy_pass http://cluster-dms-api:8000/;
-
+      # API -> backend
+      location /api/ {
         proxy_buffering off;
+        proxy_cache off;
         proxy_request_buffering off;
+
+        gzip off;
 
         proxy_http_version 1.1;
         proxy_set_header Connection "";
 
-        proxy_set_header Accept-Encoding "";
+        proxy_connect_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
 
+        proxy_pass http://backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_set_header X-Accel-Buffering no;
+      }
+
+      # Swagger/docs/openapi -> backend
+      location ~ ^/(docs|redoc|openapi\.json) {
+        proxy_pass http://backend;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Prefix /cluster;
-
-        sub_filter_once off;
-        sub_filter_types text/html application/javascript application/json text/css;
-
-        sub_filter '"/openapi.json"' '"/cluster/openapi.json"';
-        sub_filter '"openapi.json"'  '"cluster/openapi.json"';
-        sub_filter '"url":"/openapi.json"' '"url":"/cluster/openapi.json"';
-        sub_filter '"url":/openapi.json'   '"url":/cluster/openapi.json';
-
-        sub_filter '"/api/' '"/cluster/api/';
-        sub_filter "'/api/" "'/cluster/api/";
-        sub_filter '"/api"' '"/cluster/api"';
-        sub_filter "'/api'" "'/cluster/api'";
-
-        sub_filter '"/static/' '"/cluster/static/';
-        sub_filter "'/static/" "'/cluster/static/";
-        sub_filter 'href="/static/' 'href="/cluster/static/';
-        sub_filter 'src="/static/'  'src="/cluster/static/';
+        proxy_set_header X-Forwarded-Prefix /;
       }
 
-      location /digital/ {
-        proxy_pass http://digital-api:8000/;
+      # Статика с кешем
+      location ~* \.(css|js|jpg|jpeg|png|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        root /static;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+      }
 
-        proxy_buffering off;
-        proxy_request_buffering off;
+      # /excel -> excel.html
+      location = /excel {
+        root /static;
+        try_files /excel.html =404;
+      }
 
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
+      # / -> login.html
+      location = / {
+        root /static;
+        try_files /login.html =404;
+      }
 
-        proxy_set_header Accept-Encoding "";
-
-        proxy_connect_timeout 1000s;
-        proxy_send_timeout 1000s;
-        proxy_read_timeout 1000s;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Prefix /digital;
-
-        sub_filter_once off;
-        sub_filter_types text/html application/javascript application/json text/css;
-
-        sub_filter '"/openapi.json"' '"/digital/openapi.json"';
-        sub_filter '"openapi.json"'  '"digital/openapi.json"';
-        sub_filter '"url":"/openapi.json"' '"url":"/digital/openapi.json"';
-        sub_filter '"url":/openapi.json'   '"url":/digital/openapi.json';
-
-        sub_filter '"/api/' '"/digital/api/';
-        sub_filter "'/api/" "'/digital/api/";
-        sub_filter '"/api"' '"/digital/api"';
-        sub_filter "'/api'" "'/digital/api'";
-
-        sub_filter '"/static/' '"/digital/static/';
-        sub_filter "'/static/" "'/digital/static/";
-        sub_filter 'href="/static/' 'href="/digital/static/';
-        sub_filter 'src="/static/'  'src="/digital/static/';
+      # SPA fallback
+      location / {
+        root /static;
+        try_files $uri $uri/ /login.html;
       }
     }
 
@@ -98,21 +84,21 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx-proxy
+  name: digital-web
   namespace: test-services
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nginx-proxy
+      app: digital-web
   template:
     metadata:
       labels:
-        app: nginx-proxy
+        app: digital-web
     spec:
       containers:
         - name: nginx
-          image: nginx:alpine
+          image: REPLACE_ME_WITH_YOUR_DIGITAL_WEB_IMAGE
           ports:
             - containerPort: 80
               name: http
@@ -122,68 +108,32 @@ spec:
               subPath: default.conf
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /
               port: 80
-            initialDelaySeconds: 2
+            initialDelaySeconds: 3
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /
               port: 80
             initialDelaySeconds: 10
             periodSeconds: 20
       volumes:
         - name: nginx-config
           configMap:
-            name: nginx-proxy-config
+            name: digital-web-nginx-config
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx-proxy
+  name: digital-web
   namespace: test-services
 spec:
   selector:
-    app: nginx-proxy
+    app: digital-web
   ports:
     - name: http
       port: 80
       targetPort: 80
   type: ClusterIP
-
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: nginx-proxy
-  namespace: test-services
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "1000"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "1000"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "1000"
-    nginx.ingress.kubernetes.io/proxy-buffering: "off"
-spec:
-  # Если у тебя ingressClassName отличается — допиши тут:
-  # ingressClassName: nginx
-  rules:
-    - http:
-        paths:
-          - path: /cluster/
-            pathType: Prefix
-            backend:
-              service:
-                name: nginx-proxy
-                port:
-                  number: 80
-          - path: /digital/
-            pathType: Prefix
-            backend:
-              service:
-                name: nginx-proxy
-                port:
-                  number: 80
-  tls:
-    - hosts:
-        - s00-0000-uk01
-      secretName: tls-secret
