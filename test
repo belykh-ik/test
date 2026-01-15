@@ -1,154 +1,69 @@
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nginx-proxy-config
-data:
-  default.conf: |
-    server {
-      listen 80;
-      server_name localhost;
+#!/bin/bash
+# quick-rebuild.sh
+# Быстрая пересборка и деплой обоих API без вопросов
 
-      location /cluster/ {
-        # снимаем префикс /cluster/ -> /
-        proxy_pass http://cluster-dms-api:8000/;
+set -e
 
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_set_header Connection "";
-        proxy_http_version 1.1;
+echo "=== Быстрая пересборка и деплой ==="
 
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+# Конфигурация (измени если нужно)
+CLUSTER_API_PATH="${1:-./cluster_api}"
+DIGITAL_API_PATH="${2:-./digital_api}"
+NAMESPACE="${3:-dms-apis}"
 
-        sub_filter_once off;
-        sub_filter_types text/html application/javascript application/json;
+CLUSTER_IMAGE="backend-clusters-dms-api:latest"
+DIGITAL_IMAGE="digitalservices-api:latest"
 
-        # переписываем ссылки на openapi, чтобы UI работал под /cluster
-        sub_filter '"/openapi.json"' '"/cluster/openapi.json"';
-        sub_filter '"openapi.json"' '"cluster/openapi.json"';
-        sub_filter '"url":"/openapi.json"' '"url":"/cluster/openapi.json"';
-        sub_filter '"url":/openapi.json' '"url":/cluster/openapi.json';
-      }
+K8S_CMD="kubectl"
+command -v oc &> /dev/null && K8S_CMD="oc"
 
-      location /digital/ {
-        # снимаем префикс /digital/ -> /
-        proxy_pass http://digital-api:8000/;
+echo ""
+echo "Конфигурация:"
+echo "  Cluster API: $CLUSTER_API_PATH"
+echo "  Digital API: $DIGITAL_API_PATH"
+echo "  Namespace: $NAMESPACE"
+echo ""
 
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_set_header Connection "";
-        proxy_http_version 1.1;
+# Cluster API
+if [ -d "$CLUSTER_API_PATH" ]; then
+    echo "=== Сборка Cluster API ==="
+    cd "$CLUSTER_API_PATH"
+    docker build -t "$CLUSTER_IMAGE" .
+    cd - > /dev/null
+    
+    echo "=== Загрузка в K8s ==="
+    docker save "$CLUSTER_IMAGE" | sudo ctr -n k8s.io images import -
+    
+    echo "=== Обновление deployment ==="
+    $K8S_CMD rollout restart deployment/cluster-dms-api -n "$NAMESPACE"
+    echo ""
+else
+    echo "⚠ Директория $CLUSTER_API_PATH не найдена, пропускаем Cluster API"
+fi
 
-        # Для поддержки обращения к LLM с учетом задержки
-        proxy_connect_timeout 1000s;
-        proxy_send_timeout 1000s;
-        proxy_read_timeout 1000s;
+# Digital API
+if [ -d "$DIGITAL_API_PATH" ]; then
+    echo "=== Сборка Digital API ==="
+    cd "$DIGITAL_API_PATH"
+    docker build -t "$DIGITAL_IMAGE" .
+    cd - > /dev/null
+    
+    echo "=== Загрузка в K8s ==="
+    docker save "$DIGITAL_IMAGE" | sudo ctr -n k8s.io images import -
+    
+    echo "=== Обновление deployment ==="
+    $K8S_CMD rollout restart deployment/digital-api -n "$NAMESPACE"
+    echo ""
+else
+    echo "⚠ Директория $DIGITAL_API_PATH не найдена, пропускаем Digital API"
+fi
 
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+echo "=== Ожидание готовности подов ==="
+$K8S_CMD rollout status deployment/cluster-dms-api -n "$NAMESPACE" --timeout=120s || true
+$K8S_CMD rollout status deployment/digital-api -n "$NAMESPACE" --timeout=120s || true
 
-        sub_filter_once off;
-        sub_filter_types text/html application/javascript application/json;
-
-        # переписываем ссылки на openapi, чтобы UI работал под /digital
-        sub_filter '"/openapi.json"' '"/digital/openapi.json"';
-        sub_filter '"openapi.json"' '"digital/openapi.json"';
-        sub_filter '"url":"/openapi.json"' '"url":"/digital/openapi.json"';
-        sub_filter '"url":/openapi.json' '"url":/digital/openapi.json';
-      }
-    }
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: nginx-proxy
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: nginx-proxy
-  template:
-    metadata:
-      labels:
-        app: nginx-proxy
-    spec:
-      containers:
-        - name: nginx
-          image: nginx:alpine
-          ports:
-            - containerPort: 80
-              name: http
-          volumeMounts:
-            - name: nginx-config
-              mountPath: /etc/nginx/conf.d/default.conf
-              subPath: default.conf
-          readinessProbe:
-            httpGet:
-              path: /cluster/
-              port: 80
-            initialDelaySeconds: 3
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /cluster/
-              port: 80
-            initialDelaySeconds: 10
-            periodSeconds: 20
-      volumes:
-        - name: nginx-config
-          configMap:
-            name: nginx-proxy-config
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: nginx-proxy
-spec:
-  selector:
-    app: nginx-proxy
-  ports:
-    - name: http
-      port: 80
-      targetPort: 80
-  type: ClusterIP
-
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: nginx-proxy
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "1000"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "1000"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "1000"
-    nginx.ingress.kubernetes.io/proxy-buffering: "off"
-spec:
-  rules:
-    - host: your.host.example
-      http:
-        paths:
-          - path: /cluster/
-            pathType: Prefix
-            backend:
-              service:
-                name: nginx-proxy
-                port:
-                  number: 80
-          - path: /digital/
-            pathType: Prefix
-            backend:
-              service:
-                name: nginx-proxy
-                port:
-                  number: 80
-  # tls:
-  #   - hosts:
-  #       - your.host.example
-  #     secretName: your-tls-secret
+echo ""
+echo "✓ Готово!"
+echo ""
+echo "Статус подов:"
+$K8S_CMD get pods -n "$NAMESPACE" -l 'app in (cluster-dms-api,digital-api)'
