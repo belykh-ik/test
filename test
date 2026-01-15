@@ -1,90 +1,21 @@
 #!/bin/bash
-# quick-rebuild.sh
-# Быстрая пересборка и деплой обоих API без вопросов
+set -euo pipefail
 
-set -e
+# ====== НАСТРОЙКИ ======
+GIT_URL="https://git.example.com/vendor/project.git"
+USERNAME="contractor-user"
+TOKEN="glpat-xxxxxxxxxxxxxxxx"
 
-echo "=== Быстрая пересборка и деплой ==="
+DEST_DIR="project"
 
-# Конфигурация (измени если нужно)
-CLUSTER_API_PATH="${1:-./cluster_api}"
-DIGITAL_API_PATH="${2:-./digital_api}"
-NGINX_WEB_PATH="${3:-./nginx_web}"
-NAMESPACE="${4:-dms-apis}"
-
-CLUSTER_IMAGE="backend-clusters-dms-api:latest"
-DIGITAL_IMAGE="digitalservices-api:latest"
-NGINX_IMAGE="backend-clusters-dms-web:latest"
-
-K8S_CMD="kubectl"
-command -v oc &> /dev/null && K8S_CMD="oc"
-
-echo ""
-echo "Конфигурация:"
-echo "  Cluster API: $CLUSTER_API_PATH"
-echo "  Digital API: $DIGITAL_API_PATH"
-echo "  Nginx Web: $NGINX_WEB_PATH"
-echo "  Namespace: $NAMESPACE"
-echo ""
-
-# Cluster API
-if [ -d "$CLUSTER_API_PATH" ]; then
-    echo "=== Сборка Cluster API ==="
-    cd "$CLUSTER_API_PATH"
-    docker build -t "$CLUSTER_IMAGE" .
-    cd - > /dev/null
-    
-    echo "=== Загрузка в K8s ==="
-    docker save "$CLUSTER_IMAGE" | sudo ctr -n k8s.io images import -
-    
-    echo "=== Обновление deployment ==="
-    $K8S_CMD rollout restart deployment/cluster-dms-api -n "$NAMESPACE"
-    echo ""
-else
-    echo "⚠ Директория $CLUSTER_API_PATH не найдена, пропускаем Cluster API"
+# ====== ПРОВЕРКИ ======
+if [[ -d "$DEST_DIR" ]]; then
+  echo "❌ Директория $DEST_DIR уже существует"
+  exit 1
 fi
 
-# Digital API
-if [ -d "$DIGITAL_API_PATH" ]; then
-    echo "=== Сборка Digital API ==="
-    cd "$DIGITAL_API_PATH"
-    docker build -t "$DIGITAL_IMAGE" .
-    cd - > /dev/null
-    
-    echo "=== Загрузка в K8s ==="
-    docker save "$DIGITAL_IMAGE" | sudo ctr -n k8s.io images import -
-    
-    echo "=== Обновление deployment ==="
-    $K8S_CMD rollout restart deployment/digital-api -n "$NAMESPACE"
-    echo ""
-else
-    echo "⚠ Директория $DIGITAL_API_PATH не найдена, пропускаем Digital API"
-fi
+# ====== КЛОНИРОВАНИЕ ======
+echo "▶ Клонирую репозиторий..."
+git clone "https://${USERNAME}:${TOKEN}@${GIT_URL#https://}" "$DEST_DIR"
 
-# Nginx Web
-if [ -d "$NGINX_WEB_PATH" ]; then
-    echo "=== Сборка Nginx Web (статика) ==="
-    cd "$NGINX_WEB_PATH"
-    docker build -t "$NGINX_IMAGE" .
-    cd - > /dev/null
-    
-    echo "=== Загрузка в K8s ==="
-    docker save "$NGINX_IMAGE" | sudo ctr -n k8s.io images import -
-    
-    echo "=== Обновление deployment ==="
-    $K8S_CMD rollout restart deployment/dms-nginx -n "$NAMESPACE"
-    echo ""
-else
-    echo "⚠ Директория $NGINX_WEB_PATH не найдена, пропускаем Nginx Web"
-fi
-
-echo "=== Ожидание готовности подов ==="
-$K8S_CMD rollout status deployment/cluster-dms-api -n "$NAMESPACE" --timeout=120s || true
-$K8S_CMD rollout status deployment/digital-api -n "$NAMESPACE" --timeout=120s || true
-$K8S_CMD rollout status deployment/dms-nginx -n "$NAMESPACE" --timeout=120s || true
-
-echo ""
-echo "✓ Готово!"
-echo ""
-echo "Статус подов:"
-$K8S_CMD get pods -n "$NAMESPACE" -l 'app in (cluster-dms-api,digital-api,dms-nginx)'
+echo "✅ Репозиторий успешно скачан в $DEST_DIR"
