@@ -1,54 +1,8 @@
-#!/usr/bin/env bash
-set -e
+DOCKER_SOCK_GID=$(stat -c '%g' /var/run/docker.sock)
 
-### НАСТРОЙКИ ###
-GITLAB_URL="https://gitlab.com"
-REGISTRATION_TOKEN="PASTE_YOUR_TOKEN_HERE"
-RUNNER_NAME="docker-runner-$(hostname)"
-RUNNER_TAGS="docker,linux"
-DOCKER_IMAGE="docker:27"
-CONFIG_DIR="/srv/gitlab-runner"
-
-### ПРОВЕРКИ ###
-if [[ $EUID -ne 0 ]]; then
-  echo "❌ Запусти скрипт от root"
-  exit 1
-fi
-
-### УСТАНОВКА DOCKER ###
-if ! command -v docker &>/dev/null; then
-  echo "📦 Устанавливаю Docker..."
-  curl -fsSL https://get.docker.com | sh
-  systemctl enable docker
-  systemctl start docker
-fi
-
-### ПОДГОТОВКА ###
-echo "📁 Создаю директорию $CONFIG_DIR"
-mkdir -p "$CONFIG_DIR"
-
-### ЗАПУСК GITLAB RUNNER ###
-echo "🚀 Запускаю GitLab Runner"
-docker run -d \
-  --name gitlab-runner \
-  --restart always \
-  -v "$CONFIG_DIR:/etc/gitlab-runner" \
+docker rm -f gitlab-runner
+docker run -d --name gitlab-runner --restart always \
+  --group-add "${DOCKER_SOCK_GID}" \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gitlab/gitlab-runner:latest
-
-### РЕГИСТРАЦИЯ RUNNER ###
-echo "🔑 Регистрирую runner"
-docker exec -it gitlab-runner gitlab-runner register \
-  --non-interactive \
-  --url "$GITLAB_URL" \
-  --registration-token "$REGISTRATION_TOKEN" \
-  --name "$RUNNER_NAME" \
-  --executor docker \
-  --docker-image "$DOCKER_IMAGE" \
-  --docker-privileged \
-  --docker-volumes /var/run/docker.sock:/var/run/docker.sock \
-  --tag-list "$RUNNER_TAGS" \
-  --run-untagged="false" \
-  --locked="false"
-
-echo "✅ GitLab Runner установлен и зарегистрирован"
+  -v /srv/gitlab-runner-docker:/etc/gitlab-runner \
+  gitlab/gitlab-runner:alpine
