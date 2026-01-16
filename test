@@ -1,49 +1,17 @@
-  location /digital/ {
-    proxy_pass http://digital-web:80/;
+stages:
+  - vendor_sync
 
-    proxy_buffering off;
-    proxy_request_buffering off;
-
-    proxy_http_version 1.1;
-    proxy_set_header Connection "";
-
-    proxy_set_header Accept-Encoding "";
-
-    proxy_connect_timeout 1000s;
-    proxy_send_timeout 1000s;
-    proxy_read_timeout 1000s;
-
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-Host $host;
-    proxy_set_header X-Forwarded-Prefix /digital;
-
-    # ВАЖНО: чинит редиректы после логина
-    proxy_redirect ~^(/.*)$ /digital$1;
-
-    sub_filter_once off;
-    sub_filter_types text/html application/javascript application/json text/css;
-
-    sub_filter '"/openapi.json"' '"/digital/openapi.json"';
-    sub_filter '"openapi.json"'  '"digital/openapi.json"';
-    sub_filter '"url":"/openapi.json"' '"url":"/digital/openapi.json"';
-    sub_filter '"url":/openapi.json'   '"url":/digital/openapi.json';
-
-    sub_filter '"/api/' '"/digital/api/';
-    sub_filter "'/api/" "'/digital/api/";
-    sub_filter '"/api"' '"/digital/api"';
-    sub_filter "'/api'" "'/digital/api'";
-
-    sub_filter '"/static/' '"/digital/static/';
-    sub_filter "'/static/" "'/digital/static/";
-    sub_filter 'href="/static/' 'href="/digital/static/';
-    sub_filter 'src="/static/'  'src="/digital/static/';
-
-    # если /excel прописан в HTML/JS как абсолютный путь
-    sub_filter '"/excel"' '"/digital/excel"';
-    sub_filter "'/excel'" "'/digital/excel'";
-    sub_filter 'href="/excel' 'href="/digital/excel';
-    sub_filter 'src="/excel'  'src="/digital/excel';
-  }
+vendor:sync:
+  stage: vendor_sync
+  tags:
+    - vendor-sync        # <-- поставь тег, который есть у твоего раннера
+  image: alpine:3.20
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: on_success
+    - when: never
+  before_script:
+    - apk add --no-cache bash git ca-certificates
+  script:
+    - chmod +x ./vendor_sync_full.sh
+    - ./vendor_sync_full.sh
