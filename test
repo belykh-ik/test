@@ -38,3 +38,17 @@ vendor:accept:
 
     # Пушим тег
     - git push -f origin "refs/tags/vendor/last_synced"
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-namespace-admin
+  namespace: <NAMESPACE>
+subjects:
+- kind: User          # или Group — см. ниже
+  name: <USERNAME>    # ТОЧНО как приходит от auth (OIDC/cert)
+roleRef:
+  kind: ClusterRole
+  name: admin
+  apiGroup: rbac.authorization.k8s.io
