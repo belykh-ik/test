@@ -40,15 +40,65 @@ vendor:accept:
     - git push -f origin "refs/tags/vendor/last_synced"
 
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dev-admin
+  namespace: <NAMESPACE>
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dev-admin-token
+  namespace: <NAMESPACE>
+  annotations:
+    kubernetes.io/service-account.name: dev-admin
+type: kubernetes.io/service-account-token
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: dev-namespace-admin
+  name: dev-admin-binding
   namespace: <NAMESPACE>
 subjects:
-- kind: User          # или Group — см. ниже
-  name: <USERNAME>    # ТОЧНО как приходит от auth (OIDC/cert)
+- kind: ServiceAccount
+  name: dev-admin
+  namespace: <NAMESPACE>
 roleRef:
   kind: ClusterRole
   name: admin
   apiGroup: rbac.authorization.k8s.io
+---
+TOKEN=$(kubectl -n <NAMESPACE> get secret dev-admin-token \
+  -o jsonpath='{.data.token}' | base64 -d)
+
+echo "$TOKEN"
+---
+NS="<NAMESPACE>"
+SA="dev-admin"
+
+CTX="$(kubectl config current-context)"
+CLUSTER="$(kubectl config view -o jsonpath="{.contexts[?(@.name==\"$CTX\")].context.cluster}")"
+SERVER="$(kubectl config view -o jsonpath="{.clusters[?(@.name==\"$CLUSTER\")].cluster.server}")"
+CA_DATA="$(kubectl config view --raw -o jsonpath="{.clusters[?(@.name==\"$CLUSTER\")].cluster.certificate-authority-data}")"
+
+cat > ${SA}-${NS}.kubeconfig <<EOF
+apiVersion: v1
+kind: Config
+clusters:
+- name: ${CLUSTER}
+  cluster:
+    server: ${SERVER}
+    certificate-authority-data: ${CA_DATA}
+users:
+- name: ${SA}
+  user:
+    token: ${TOKEN}
+contexts:
+- name: ${SA}@${CLUSTER}
+  context:
+    cluster: ${CLUSTER}
+    namespace: ${NS}
+    user: ${SA}
+current-context: ${SA}@${CLUSTER}
+EOF
