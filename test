@@ -1,131 +1,40 @@
-#!/usr/bin/env bash
-set -euo pipefail
+stages:
+  - vendor_accept
 
-die() { echo "❌ $*" >&2; exit 1; }
+vendor:accept:
+  stage: vendor_accept
+  image: alpine:3.20
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+      allow_failure: false
+    - when: never
+  before_script:
+    - apk add --no-cache git bash ca-certificates
+    - git config --global user.email "vendor-sync-bot@your.company"
+    - git config --global user.name "vendor-sync-bot"
+  script:
+    - set -euo pipefail
+    - set +x
 
-# ===================== НАСТРОЙКИ ЧЕРЕЗ ENV =====================
-# --- Наш репозиторий (куда пушим) ---
-OUR_REPO_URL="${OUR_REPO_URL:-}"                 # например: https://gitlab.mycompany.com/group/our-cvm.git
-OUR_GIT_USERNAME="${OUR_GIT_USERNAME:-}"         # username в вашем git (лучше bot)
-OUR_GIT_TOKEN="${OUR_GIT_TOKEN:-}"               # токен с write_repository
+    # ВАЖНО: используем отдельный bot-token с правами write_repository (и push tags)
+    # Задай переменные в GitLab CI/CD Variables (masked/protected):
+    # BOT_USERNAME, BOT_TOKEN
+    - test -n "${BOT_USERNAME:-}" || (echo "BOT_USERNAME is empty" && exit 1)
+    - test -n "${BOT_TOKEN:-}" || (echo "BOT_TOKEN is empty" && exit 1)
 
-# --- Репозиторий вендора (откуда читаем) ---
-VENDOR_URL="${VENDOR_URL:-}"                     # например: https://git.vendor.com/group/cvm.git
-VENDOR_BRANCH="${VENDOR_BRANCH:-main}"           # ветка вендора
-VENDOR_GIT_USERNAME="${VENDOR_GIT_USERNAME:-}"   # username вендора
-VENDOR_GIT_TOKEN="${VENDOR_GIT_TOKEN:-}"         # token вендора
+    # Подменяем origin на URL с кредами только внутри job
+    - ORIGIN_URL="$(git remote get-url origin)"
+    - ORIGIN_URL_AUTH="https://${BOT_USERNAME}:${BOT_TOKEN}@${ORIGIN_URL#https://}"
+    - git remote set-url origin "${ORIGIN_URL_AUTH}"
 
-# --- Ветки/refs в НАШЕМ репо ---
-OUR_VENDOR_MAIN_BRANCH="${OUR_VENDOR_MAIN_BRANCH:-vendor/main}"
-OUR_VENDOR_CHANGES_BRANCH="${OUR_VENDOR_CHANGES_BRANCH:-vendor/changes}"
-LAST_SYNC_TAG="${LAST_SYNC_TAG:-vendor/last_synced}"  # тег в нашем репо
+    # Забираем актуальный vendor/main из origin
+    - git fetch origin "+refs/heads/vendor/main:refs/remotes/origin/vendor/main"
 
-# --- Рабочая директория ---
-WORKDIR="${WORKDIR:-/tmp/vendor-sync}"
-CLONE_DIR="${CLONE_DIR:-cvm-repo}"
+    # Ставим тег vendor/last_synced на текущее состояние vendor/main
+    - VENDOR_MAIN_COMMIT="$(git rev-parse refs/remotes/origin/vendor/main)"
+    - echo "Setting vendor/last_synced -> ${VENDOR_MAIN_COMMIT}"
+    - git tag -f vendor/last_synced "${VENDOR_MAIN_COMMIT}"
 
-# ===============================================================
-
-[[ -n "$OUR_REPO_URL" ]] || die "Не задан OUR_REPO_URL"
-[[ -n "$OUR_GIT_USERNAME" && -n "$OUR_GIT_TOKEN" ]] || die "Не заданы OUR_GIT_USERNAME/OUR_GIT_TOKEN"
-[[ -n "$VENDOR_URL" ]] || die "Не задан VENDOR_URL"
-[[ -n "$VENDOR_GIT_USERNAME" && -n "$VENDOR_GIT_TOKEN" ]] || die "Не заданы VENDOR_GIT_USERNAME/VENDOR_GIT_TOKEN"
-
-# чтобы токены не светились
-set +x
-
-mkdir -p "$WORKDIR"
-cd "$WORKDIR"
-
-# 1) Клонируем НАШ репозиторий
-echo "▶ Клонирую наш репозиторий в $WORKDIR/$CLONE_DIR"
-rm -rf "$CLONE_DIR"
-
-OUR_REPO_URL_AUTH="https://${OUR_GIT_USERNAME}:${OUR_GIT_TOKEN}@${OUR_REPO_URL#https://}"
-git clone "$OUR_REPO_URL_AUTH" "$CLONE_DIR" >/dev/null
-
-cd "$CLONE_DIR"
-
-# Сразу убираем токен из origin URL (чтобы не сохранялся в .git/config)
-# Оставляем чистый URL без кредов, а для пуша используем отдельный remote origin_push
-git remote set-url origin "$OUR_REPO_URL" >/dev/null
-
-# Настраиваем identity (иначе cherry-pick может ругаться)
-git config user.email "vendor-sync@local"
-git config user.name "vendor-sync"
-
-# 2) Добавляем remote vendor
-VENDOR_URL_AUTH="https://${VENDOR_GIT_USERNAME}:${VENDOR_GIT_TOKEN}@${VENDOR_URL#https://}"
-if git remote get-url vendor >/dev/null 2>&1; then
-  git remote set-url vendor "$VENDOR_URL_AUTH" >/dev/null
-else
-  git remote add vendor "$VENDOR_URL_AUTH" >/dev/null
-fi
-
-# 3) Отдельный remote для push, чтобы токен не сохранялся в origin
-ORIGIN_PUSH_URL_AUTH="https://${OUR_GIT_USERNAME}:${OUR_GIT_TOKEN}@${OUR_REPO_URL#https://}"
-if git remote get-url origin_push >/dev/null 2>&1; then
-  git remote set-url origin_push "$ORIGIN_PUSH_URL_AUTH" >/dev/null
-else
-  git remote add origin_push "$ORIGIN_PUSH_URL_AUTH" >/dev/null
-fi
-
-echo "▶ Буду пушить в: $OUR_REPO_URL"
-echo "▶ Fetch из вендора ($VENDOR_BRANCH)..."
-git fetch --prune vendor "+refs/heads/${VENDOR_BRANCH}:refs/remotes/vendor/${VENDOR_BRANCH}" >/dev/null
-
-V_NEW="$(git rev-parse "refs/remotes/vendor/${VENDOR_BRANCH}")"
-
-# 4) Определяем "предыдущую предоставленную версию" = наш тег LAST_SYNC_TAG
-if git show-ref --verify --quiet "refs/tags/${LAST_SYNC_TAG}"; then
-  V_OLD="$(git rev-parse "refs/tags/${LAST_SYNC_TAG}")"
-else
-  V_OLD=""
-fi
-
-if [[ -n "$V_OLD" && "$V_NEW" == "$V_OLD" ]]; then
-  echo "✅ Изменений у вендора нет (commit: $V_NEW)"
-  exit 0
-fi
-
-echo "▶ Новый commit вендора: $V_NEW"
-[[ -n "$V_OLD" ]] && echo "▶ Предыдущая версия: $V_OLD" || echo "▶ Это первая синхронизация (старой версии нет)"
-
-# -----------------------------------------------------
-# МЕСТО №2 — vendor/main (полный срез)
-# -----------------------------------------------------
-echo "▶ Обновляю $OUR_VENDOR_MAIN_BRANCH (полный срез)"
-git checkout -B "$OUR_VENDOR_MAIN_BRANCH" "$V_NEW" >/dev/null
-git push -f origin_push "$OUR_VENDOR_MAIN_BRANCH:$OUR_VENDOR_MAIN_BRANCH" >/dev/null
-
-# -----------------------------------------------------
-# МЕСТО №1 — vendor/changes (дельта относительно прошлой версии)
-# -----------------------------------------------------
-echo "▶ Обновляю $OUR_VENDOR_CHANGES_BRANCH (дельта)"
-if [[ -z "$V_OLD" ]]; then
-  # первая синхронизация: changes = весь код
-  git checkout -B "$OUR_VENDOR_CHANGES_BRANCH" "$V_NEW" >/dev/null
-else
-  # ожидаем линейную историю вендора
-  git merge-base --is-ancestor "$V_OLD" "$V_NEW" \
-    || die "Нелинейная история вендора: $V_OLD не предок $V_NEW. Нужна другая стратегия (diff/squash)."
-
-  git checkout -B "$OUR_VENDOR_CHANGES_BRANCH" "$V_OLD" >/dev/null
-  git cherry-pick --keep-redundant-commits "$V_OLD..$V_NEW"
-fi
-git push -f origin_push "$OUR_VENDOR_CHANGES_BRANCH:$OUR_VENDOR_CHANGES_BRANCH" >/dev/null
-
-# -----------------------------------------------------
-# last_synced tag
-# -----------------------------------------------------
-echo "▶ Обновляю тег $LAST_SYNC_TAG -> $V_NEW"
-git tag -f "$LAST_SYNC_TAG" "$V_NEW" >/dev/null
-git push -f origin_push "refs/tags/${LAST_SYNC_TAG}" >/dev/null
-
-# (опционально) убрать remote origin_push, чтобы токен не оставался в .git/config
-git remote remove origin_push >/dev/null || true
-
-echo "✅ Готово.
-- $OUR_VENDOR_MAIN_BRANCH   = полный срез вендора
-- $OUR_VENDOR_CHANGES_BRANCH= изменения с прошлой версии
-- тег $LAST_SYNC_TAG         = $V_NEW"
+    # Пушим тег
+    - git push -f origin "refs/tags/vendor/last_synced"
