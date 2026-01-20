@@ -1,80 +1,22 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-###==============================================###
-GITLAB_URL="https://gitlab.sogaz.ru"
-REGISTRATION_TOKEN="glrt-TOKEN"
-RUNNER_NAME="gitlab-runner-$(hostname)"
-RUNNER_TAGS="gl01-docker"
-DOCKER_IMAGE="nexus.sogaz.ru/library/docker:27"
-CONFIG_DIR="/srv/gitlab-runner-docker"
-RUNNER_CONTAINER_NAME="gitlab-runner"
-RUNNER_IMAGE="nexus.sogaz.ru/gitlab/gitlab-runner:latest"
-###==============================================###
-
-die() { echo "❌ $*" >&2; exit 1; }
-info() { echo "▶ $*"; }
-
-command -v docker >/dev/null 2>&1 || die "docker не найден"
-test -S /var/run/docker.sock || die "/var/run/docker.sock не найден (docker daemon работает?)"
-
-DOCKER_SOCK_GID="$(stat -c '%g' /var/run/docker.sock)"
-info "Docker sock GID: ${DOCKER_SOCK_GID}"
-
-# --- ПОДГОТОВКА ---
-info "Создаю директорию ${CONFIG_DIR}"
-mkdir -p "${CONFIG_DIR}"
-# Обычно достаточно 755; 777 не рекомендую
-chmod 755 "${CONFIG_DIR}"
-
-# --- ОСТАНОВКА/УДАЛЕНИЕ СТАРОГО RUNNER (если есть) ---
-if docker ps -a --format '{{.Names}}' | grep -qx "${RUNNER_CONTAINER_NAME}"; then
-  info "Контейнер ${RUNNER_CONTAINER_NAME} уже существует — удаляю"
-  docker rm -f "${RUNNER_CONTAINER_NAME}" >/dev/null
-fi
-
-# --- ЗАПУСК GITLAB RUNNER ---
-info "Запускаю GitLab Runner контейнер"
-docker run -d \
-  --name "${RUNNER_CONTAINER_NAME}" \
-  --restart always \
-  --group-add "${DOCKER_SOCK_GID}" \
-  -v "${CONFIG_DIR}:/etc/gitlab-runner" \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  "${RUNNER_IMAGE}" >/dev/null
-
-# Дадим контейнеру подняться
-sleep 2
-
-# --- ПРОВЕРКА ДОСТУПА К DOCKER SOCK ИЗНУТРИ RUNNER ---
-info "Проверяю доступ к docker.sock изнутри runner"
-docker exec "${RUNNER_CONTAINER_NAME}" sh -lc 'id; ls -l /var/run/docker.sock' || true
-
-# --- РЕГИСТРАЦИЯ RUNNER ---
-# Если в CONFIG_DIR уже лежит config.toml с зарегистрированным раннером, повторная регистрация добавит ещё один runner.
-# Поэтому: если config.toml уже есть и содержит [[runners]], регистрацию пропускаем.
-CONFIG_TOML="${CONFIG_DIR}/config.toml"
-if [[ -f "${CONFIG_TOML}" ]] && grep -q '^\[\[runners\]\]' "${CONFIG_TOML}"; then
-  info "Похоже, runner уже зарегистрирован (найден ${CONFIG_TOML}). Пропускаю регистрацию."
-else
-  info "Регистрирую runner"
-  docker exec -it "${RUNNER_CONTAINER_NAME}" gitlab-runner register \
-    --non-interactive \
-    --url "${GITLAB_URL}" \
-    --registration-token "${REGISTRATION_TOKEN}" \
-    --name "${RUNNER_NAME}" \
-    --executor docker \
-    --docker-image "${DOCKER_IMAGE}" \
-    --docker-privileged \
-    --docker-volumes "/var/run/docker.sock:/var/run/docker.sock" \
-    --tag-list "${RUNNER_TAGS}" \
-    --run-untagged="false" \
-    --locked="true"
-fi
-
-# --- ПЕРЕЗАПУСК на всякий случай, чтобы runner перечитал конфиг ---
-info "Перезапускаю runner контейнер"
-docker restart "${RUNNER_CONTAINER_NAME}" >/dev/null
-
-info "Готово: GitLab Runner установлен и (при необходимости) зарегистрирован."
-info "Проверь в GitLab UI: Project → Settings → CI/CD → Runners (online, tags: ${RUNNER_TAGS})"
+initContainers:
+  - name: render-redisson-config
+    image: alpine:3.20
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        set -e
+        apk add --no-cache gettext
+        envsubst < /tpl/redisson-conf.yaml.tpl > /out/redisson-conf.yaml
+        chmod 0444 /out/redisson-conf.yaml
+    env:
+      - name: REDIS_PASS
+        valueFrom:
+          secretKeyRef:
+            name: redis-secret
+            key: REDIS_PASS
+    volumeMounts:
+      - name: redisson-tpl
+        mountPath: /tpl
+        readOnly: true
+      - name: redisson-rendered
+        mountPath: /out
