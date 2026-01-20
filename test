@@ -1,22 +1,289 @@
-initContainers:
-  - name: render-redisson-config
-    image: alpine:3.20
-    command: ["/bin/sh", "-c"]
-    args:
-      - |
-        set -e
-        apk add --no-cache gettext
-        envsubst < /tpl/redisson-conf.yaml.tpl > /out/redisson-conf.yaml
-        chmod 0444 /out/redisson-conf.yaml
-    env:
-      - name: REDIS_PASS
-        valueFrom:
-          secretKeyRef:
-            name: redis-secret
-            key: REDIS_PASS
-    volumeMounts:
-      - name: redisson-tpl
-        mountPath: /tpl
-        readOnly: true
-      - name: redisson-rendered
-        mountPath: /out
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      when: always
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: always
+    - when: never
+
+stages:
+  - build
+  - deploy
+
+variables:
+  # Наименование сервиса, будет использовано в качестве составной части пути и в логах
+  SERVICE: 'transcription-service-frontend'
+  SERVICE_NAME: 'transcription-service-frontend'
+  CI_PROJECT_NAME: 'transcription-service-frontend'
+
+  # Требуемое кол-во инстансов (только для прод среды)
+  SERVICE_REPLICAS: 1
+
+  # Рабочий порт приложения
+  SERVER_PORT: 8080
+  # Порт для проверки работоспособности приложения, только для k8s
+  MANAGEMENT_SERVER_PORT: 8080
+
+  # Запрос CPU (минимальное требуемое кол-во)
+  RESOURCES_REQUESTS_CPU: 100m
+  # Запрос памяти (минимальное требуемое кол-во)
+  RESOURCES_REQUESTS_MEMORY: 128Mi
+  # Лимит памяти (максимальное требуемое кол-во). Pod будет помечен для удаления при превышении!
+  RESOURCES_LIMITS_MEMORY: 384Mi
+
+  # Пути actuator'a для проверки - только для k8s
+  K8S_LIVENESS_PROBE: '/actuator/health/liveness'
+  K8S_READINESS_PROBE: '/actuator/health/readiness'
+
+  # Исключить сервис из автоматического логирования
+  EXCLUDE_FROM_LOGGING: 'false' # false/true
+  DEFAULT_RUNNER_TAG: 'iskra-runner'
+  HOME: /builds_dir
+  RUNNER_PROD: 'iskra-runner'
+
+  CI_NAMESPACE_PROD: 'service-prod'
+  CI_HOST_PROD_DMZ: 'iskra.sogaz.ru'
+  CI_DOMAIN_PROD_DMZ: 'iskra.sogaz.ru'
+
+  SERVICE_URL: ''
+  SERVICE_PATH: ''
+
+# -----------------------
+# BUILD (develop + release-*)
+# -----------------------
+build app:
+  stage: build
+  image: nexus.sogaz.ru/docker:27
+  tags:
+    - gl03-docker-1
+  services:
+    - name: nexus.sogaz.ru/docker:27-dind
+      command: ["--mtu=1460"]
+  variables:
+    HOME: /
+    GIT_CONFIG_GLOBAL: /.gitconfig
+    CI_REGISTRY_IMAGE: "harbor.sogaz.ru/kdms/transcription-service-frontend"
+    CI_REGISTRY: "harbor.sogaz.ru"
+    GIT_STRATEGY: fetch
+  script:
+    - CI_REPO_USER=$(echo $CI_REPO_USER_BASE64 | base64 -d)
+    - CI_REPO_PASSWORD=$(echo $CI_REPO_PASSWORD_BASE64 | base64 -d)
+    - docker login -u "$CI_REPO_USER" -p "$CI_REPO_PASSWORD" "$CI_REGISTRY"
+    - docker build -t "$CI_REGISTRY_IMAGE:${CI_COMMIT_SHORT_SHA}" -t "$CI_REGISTRY_IMAGE:${CI_COMMIT_REF_SLUG}" .
+    - echo "$CI_REGISTRY_IMAGE:${CI_COMMIT_REF_SLUG}"
+    - echo "$CI_REGISTRY_IMAGE:${CI_COMMIT_SHORT_SHA}"
+    - docker push "$CI_REGISTRY_IMAGE:${CI_COMMIT_SHORT_SHA}"
+    - docker push "$CI_REGISTRY_IMAGE:${CI_COMMIT_REF_SLUG}"
+    - echo ${CI_COMMIT_SHORT_SHA}
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: on_success
+    - when: never
+
+# -----------------------
+# DEPLOY: TEST (only develop)
+# -----------------------
+deploy_test:
+  stage: deploy
+  image: ${CI_REPO_DOCKER}/devth/helm:v3.12.3
+  variables:
+    EXCLUDE_FROM_LOGGING: false
+    HOME: /builds_dir
+    CI_ENV_STAGE: test
+    SERVICE_ENV: ${CI_ENV_STAGE}
+
+    # !!! проверь, что эти переменные реально существуют у вас !!!
+    SERVICE_HOST: ${CI_DOMAIN_TEST}
+    CI_NAMESPACE_STAGE: service-${CI_ENV_STAGE}
+    SERVICE_NAMESPACE: ${CI_NAMESPACE_STAGE}
+    KUBECONFIG_INTERNAL: ${KUBECONFIG_TEST}
+    SITE_CONFIG: ${VITE_CONFIG_TEST}
+    VITE_ENV: ${VITE_ENV_TEST}
+    HELM_APP_ENV: ${HELM_APP_ENV_TEST}
+
+    DEFAULT_RUNNER_TAG: "iskra-test-runner"
+  dependencies:
+    - _clone_ci_templates
+  before_script:
+    - export SERVICE_URL_PATH=${CI_PATH_PREFIX}
+    - echo $SERVICE_URL_PATH
+    - export NEXT_PUBLIC_BASE_PATH=''
+    - export SHORT_CI_COMMIT_REF_NAME1=$(echo "$CI_COMMIT_REF_NAME" | cut -f1 -d"/" | tr '[:upper:]' '[:lower:]')
+    - export SERVICE_PATH=$(echo "/${CI_PROJECT_NAME}")
+    - echo $SERVICE_NAME
+    - echo $SERVICE_PATH
+  script:
+    - mkdir -p ~/.kube
+    - echo ${KUBECONFIG_INTERNAL} | base64 -d > ~/.kube/config
+    - cp $LOCAL_TEMPLATE_REPO_PATH/helm/custom.json custom.json
+    - envsubst < custom.json > ${HELM_CUSTOM_VALUES_FILE}
+    - echo "${HELM_APP_ENV}" > helm_app_env.yml
+
+    - echo CI_HELM_UPGRADE_FLAGS ${CI_HELM_UPGRADE_FLAGS}
+    - echo SERVICE_NAMESPACE ${SERVICE_NAMESPACE}
+    - echo HELM_CUSTOM_VALUES_FILE ${HELM_CUSTOM_VALUES_FILE}
+    - echo SERVICE_NAME ${SERVICE_NAME}
+    - echo LOCAL_TEMPLATE_REPO_PATH ${LOCAL_TEMPLATE_REPO_PATH}
+
+    - helm upgrade --install \
+        ${CI_HELM_UPGRADE_FLAGS} \
+        --namespace ${SERVICE_NAMESPACE} \
+        --create-namespace \
+        -f ${HELM_CUSTOM_VALUES_FILE} \
+        -f helm_app_env.yml \
+        ${SERVICE_NAME} $LOCAL_TEMPLATE_REPO_PATH/helm/
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      when: on_success
+    - when: never
+  tags:
+    - ${DEFAULT_RUNNER_TAG}
+
+# -----------------------
+# DEPLOY: STAGE (manual only release-*)
+# -----------------------
+deploy_stage:
+  stage: deploy
+  image: ${CI_REPO_DOCKER}/devth/helm:v3.12.3
+  variables:
+    EXCLUDE_FROM_LOGGING: false
+    HOME: /builds_dir
+    HELM_APP_ENV: ${HELM_APP_ENV_STAGE}
+    CI_ENV_STAGE: stage
+    SERVICE_ENV: ${CI_ENV_STAGE}
+    SERVICE_HOST: ${CI_DOMAIN_STAGE}
+    # если у stage другой шаблон урла/домена — поправь
+    SERVICE_URL: feature.${CI_PROJECT_NAME}.${CI_DOMAIN_DEV}
+    CI_NAMESPACE_STAGE: service-${CI_ENV_STAGE}
+    SERVICE_NAMESPACE: ${CI_NAMESPACE_STAGE}
+    KUBECONFIG_INTERNAL: ${KUBECONFIG_STAGE}
+    SITE_CONFIG: ${VITE_CONFIG_STAGE}
+    VITE_ENV: ${VITE_ENV_STAGE}
+    DEFAULT_RUNNER_TAG: "iskra-stage-runner"
+  dependencies:
+    - _clone_ci_templates
+  before_script:
+    - export SERVICE_URL_PATH=${CI_PATH_PREFIX}
+    - echo $SERVICE_URL_PATH
+    - export NEXT_PUBLIC_BASE_PATH=''
+    - export SHORT_CI_COMMIT_REF_NAME1=$(echo "$CI_COMMIT_REF_NAME" | cut -f1 -d"/" | tr '[:upper:]' '[:lower:]')
+    - export SERVICE_PATH=$(echo "/${CI_PROJECT_NAME}")
+    - echo $SERVICE_NAME
+    - echo $SERVICE_PATH
+  script:
+    - mkdir -p ~/.kube
+    - echo ${KUBECONFIG_INTERNAL} | base64 -d > ~/.kube/config
+    - cp $LOCAL_TEMPLATE_REPO_PATH/helm/custom.json custom.json
+    - envsubst < custom.json > ${HELM_CUSTOM_VALUES_FILE}
+    - echo "${HELM_APP_ENV}" > helm_app_env.yml
+
+    - echo CI_HELM_UPGRADE_FLAGS ${CI_HELM_UPGRADE_FLAGS}
+    - echo SERVICE_NAMESPACE ${SERVICE_NAMESPACE}
+    - echo HELM_CUSTOM_VALUES_FILE ${HELM_CUSTOM_VALUES_FILE}
+    - echo SERVICE_NAME ${SERVICE_NAME}
+    - echo LOCAL_TEMPLATE_REPO_PATH ${LOCAL_TEMPLATE_REPO_PATH}
+
+    - helm upgrade --install \
+        ${CI_HELM_UPGRADE_FLAGS} \
+        --namespace ${SERVICE_NAMESPACE} \
+        --create-namespace \
+        -f ${HELM_CUSTOM_VALUES_FILE} \
+        -f helm_app_env.yml \
+        ${SERVICE_NAME} $LOCAL_TEMPLATE_REPO_PATH/helm/
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: manual
+    - when: never
+  allow_failure: false
+  tags:
+    - ${DEFAULT_RUNNER_TAG}
+
+# -----------------------
+# DEPLOY: PROD (manual only release-*)
+# (если у вас prod деплоится через include jobs — можно этот job не использовать)
+# -----------------------
+deploy_prod:
+  stage: deploy
+  image: ${CI_REPO_DOCKER}/devth/helm:v3.12.3
+  variables:
+    EXCLUDE_FROM_LOGGING: false
+    HOME: /builds_dir
+    HELM_APP_ENV: ${HELM_APP_ENV_PROD}
+    CI_ENV_STAGE: prod
+    SERVICE_ENV: ${CI_ENV_STAGE}
+
+    # !!! проверь реальные переменные у вас для prod !!!
+    SERVICE_HOST: ${CI_DOMAIN_PROD}
+    CI_NAMESPACE_STAGE: service-${CI_ENV_STAGE}
+    SERVICE_NAMESPACE: ${CI_NAMESPACE_STAGE}
+    KUBECONFIG_INTERNAL: ${KUBECONFIG_PROD}
+    SITE_CONFIG: ${VITE_CONFIG_PROD}
+    VITE_ENV: ${VITE_ENV_PROD}
+
+    DEFAULT_RUNNER_TAG: "iskra-runner"
+  dependencies:
+    - _clone_ci_templates
+  before_script:
+    - export SERVICE_URL_PATH=${CI_PATH_PREFIX}
+    - echo $SERVICE_URL_PATH
+    - export NEXT_PUBLIC_BASE_PATH=''
+    - export SHORT_CI_COMMIT_REF_NAME1=$(echo "$CI_COMMIT_REF_NAME" | cut -f1 -d"/" | tr '[:upper:]' '[:lower:]')
+    - export SERVICE_PATH=$(echo "/${CI_PROJECT_NAME}")
+    - echo $SERVICE_NAME
+    - echo $SERVICE_PATH
+  script:
+    - mkdir -p ~/.kube
+    - echo ${KUBECONFIG_INTERNAL} | base64 -d > ~/.kube/config
+    - cp $LOCAL_TEMPLATE_REPO_PATH/helm/custom.json custom.json
+    - envsubst < custom.json > ${HELM_CUSTOM_VALUES_FILE}
+    - echo "${HELM_APP_ENV}" > helm_app_env.yml
+
+    - helm upgrade --install \
+        ${CI_HELM_UPGRADE_FLAGS} \
+        --namespace ${SERVICE_NAMESPACE} \
+        --create-namespace \
+        -f ${HELM_CUSTOM_VALUES_FILE} \
+        -f helm_app_env.yml \
+        ${SERVICE_NAME} $LOCAL_TEMPLATE_REPO_PATH/helm/
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: manual
+    - when: never
+  allow_failure: false
+  tags:
+    - ${DEFAULT_RUNNER_TAG}
+
+# -----------------------
+# INCLUDES (как у тебя)
+# -----------------------
+include:
+  - project: 'infrastructure/common/gitlab-ci'
+    ref: master
+    file: '/node/k8s/v100/.gitlab-ci.yml'
+  - project: 'infrastructure/common/gitlab-ci'
+    ref: master
+    file: '/argocd/push-tag.yaml'
+
+# -----------------------
+# OVERRIDES для prod jobs из include:
+# делаем их MANUAL и только для release-*
+# -----------------------
+deploy_prod_dmz:
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: manual
+    - when: never
+
+deploy-prod-dmz:
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: manual
+    - when: never
+
+deploy-prod-kis:
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: manual
+    - when: never
