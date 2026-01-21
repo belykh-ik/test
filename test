@@ -1,161 +1,159 @@
-==============================
- RabbitMQ commands cheat-sheet
-==============================
+include:
+  - project: 'infrastructure/common/gitlab-ci'
+    ref: master
+    file: '/node/k8s/v100/.gitlab-ci.yml'
+  - project: 'infrastructure/common/gitlab-ci'
+    ref: master
+    file: '/argocd/push-tag.yaml'
 
-# Примечания:
-# - rabbitmqctl работает внутри контейнера RabbitMQ
-# - rabbitmqadmin работает через Management API (HTTP), нужен порт 15672
-# - Подставляй свои значения: <HOST>, <RABBIT_CONTAINER>, <QUEUE>, <EXCHANGE>, <VHOST>, <USER>, <PASS>
+# 1) Создаём pipeline ТОЛЬКО для develop и release-*
+# 2) Тут же задаём переменные окружения для develop (TEST).
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      when: always
+      variables:
+        # целевое окружение для develop = TEST
+        HELM_APP_ENV: ${HELM_APP_ENV_TEST}
+        SERVICE_ENV: ${CI_ENV_TEST}
+        SERVICE_HOST: ${CI_HOST_TEST}
+        SERVICE_URL: ${CI_PROJECT_NAME}.${CI_DOMAIN_TEST}
+        SERVICE_NAMESPACE: ${CI_NAMESPACE_TEST}
+        KUBECONFIG_INTERNAL: ${KUBECONFIG_NEW_TEST}
+        VITE_CONFIG: ${VITE_CONFIG_TEST}
+        VITE_ENV: ${VITE_ENV_TEST}
 
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: always
 
---------------------------------
-0) Быстрые переменные (для себя)
---------------------------------
-RABBIT_CONTAINER=rabbitmq
-HOST=localhost
-MGMT_PORT=15672
-VHOST=/
-USER=dev
-PASS=dev
+    - when: never
 
+# -------------------------
+# Отключаем "лишние" джобы из include,
+# чтобы в пайплайне develop/release-* не торчали init/lint/build и т.п.
+# -------------------------
+init:
+  rules:
+    - when: never
 
---------------------------------
-1) Проверить, что контейнер жив и порты проброшены
---------------------------------
-docker ps | grep rabbit
+lint:
+  rules:
+    - when: never
 
-# С хоста проверить доступ к management API:
-curl -s -u dev:dev http://localhost:15672/api/overview | head
+build:
+  rules:
+    - when: never
 
+deploy-future-bugfix:
+  rules:
+    - when: never
 
---------------------------------
-2) Список vhost
---------------------------------
-docker exec -it rabbitmq rabbitmqctl list_vhosts
+deploy-dev:
+  rules:
+    - when: never
 
+stop_k8s_future-bugfix:
+  rules:
+    - when: never
 
---------------------------------
-3) Список пользователей
---------------------------------
-docker exec -it rabbitmq rabbitmqctl list_users
+# -------------------------
+# BUILD: используем существующий build-kaniko из include
+# включаем его только для develop и release-*
+# -------------------------
+build-kaniko:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: on_success
+    - when: never
 
+# clone_ci_templates нужен для deploy jobs (они зависят от templates)
+clone_ci_templates:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: on_success
+    - when: never
 
---------------------------------
-4) Права пользователя на vhost
---------------------------------
-docker exec -it rabbitmq rabbitmqctl list_permissions -p /
+# -------------------------
+# DEVELOP -> DEPLOY TEST (AUTO)
+# используем существующий deploy_test из include, но меняем rules
+# -------------------------
+deploy_test:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      when: on_success
+    - when: never
 
-# Выдать полные права (осторожно):
-docker exec -it rabbitmq rabbitmqctl set_permissions -p / dev ".*" ".*" ".*"
+# -------------------------
+# RELEASE-* -> manual deploy STAGE
+# В include нет отдельного stage-джоба под ваш процесс, добавляем ОДИН новый job.
+# Скрипт — тот же helm upgrade, но с stage-переменными.
+# -------------------------
+deploy_stage:
+  stage: deploy
+  image: $CI_REPO_DOCKER/devth/helm:v3.12.3
+  variables:
+    EXCLUDE_FROM_LOGGING: false
 
+    HELM_APP_ENV: ${HELM_APP_ENV_STAGE}
+    SERVICE_ENV: ${CI_ENV_STAGE}
+    SERVICE_HOST: ${CI_HOST_STAGE}
+    SERVICE_URL: stage.${CI_PROJECT_NAME}.${CI_DOMAIN_STAGE}
+    SERVICE_NAMESPACE: ${CI_NAMESPACE_STAGE}
+    KUBECONFIG_INTERNAL: ${KUBECONFIG_NEW_TEST}
+    VITE_CONFIG: ${VITE_CONFIG_STAGE}
+    VITE_ENV: ${VITE_ENV_STAGE}
 
---------------------------------
-5) Список очередей и их метрики
---------------------------------
-docker exec -it rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers
+  dependencies:
+    - clone_ci_templates
 
-# Только одна очередь:
-docker exec -it rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers | grep USK-DisPult
+  before_script:
+    - export SERVICE_URL_PATH=${CI_PATH_PREFIX}
+    - echo $SERVICE_URL_PATH
+    - export NEXT_PUBLIC_BASE_PATH=''
+    - export SERVICE_PATH=$(echo "${CI_PATH_PREFIX}/${SERVICE_ENV}/${CI_PROJECT_NAME}/${CI_COMMIT_REF_SLUG}")
+    - echo $SERVICE_PATH
+    - export SHORT_CI_COMMIT_REF_NAME1=$(echo "$CI_COMMIT_REF_NAME" | cut -f1 -d"/" | tr '[:upper:]' '[:lower:]')
+    - export SERVICE_NAME=${CI_PROJECT_NAME}-${SHORT_CI_COMMIT_REF_NAME1}
+    - echo $SERVICE_NAME
 
+  script:
+    - mkdir -p ~/.kube
+    - echo ${KUBECONFIG_INTERNAL} | base64 -d > ~/.kube/config
+    - cp $LOCAL_TEMPLATE_REPO_PATH/helm/custom.json custom.json
+    - envsubst < custom.json > ${HELM_CUSTOM_VALUES_FILE}
+    - echo "${HELM_APP_ENV}" > helm_app_env.yml
+    - helm upgrade --install
+      ${CI_HELM_UPGRADE_FLAGS}
+      --namespace ${SERVICE_NAMESPACE}
+      --create-namespace
+      -f ${HELM_CUSTOM_VALUES_FILE}
+      -f helm_app_env.yml
+      ${SERVICE_NAME} $LOCAL_TEMPLATE_REPO_PATH/helm/
 
---------------------------------
-6) Список exchange
---------------------------------
-docker exec -it rabbitmq rabbitmqctl list_exchanges name type
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: manual
+    - when: never
 
+  allow_failure: true
 
---------------------------------
-7) Список bindings
---------------------------------
-docker exec -it rabbitmq rabbitmqctl list_bindings
+# -------------------------
+# RELEASE-* -> manual deploy PROD
+# используем существующий deploy_prod_dmz / deploy_prod из include,
+# но убираем master и оставляем только release-*.
+# -------------------------
+deploy_prod_dmz:
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: manual
+    - when: never
 
-
---------------------------------
-8) Посмотреть consumers (кто читает очередь)
---------------------------------
-docker exec -it rabbitmq rabbitmqctl list_consumers
-
-
---------------------------------
-9) Опубликовать сообщение через rabbitmqadmin (Management API)
---------------------------------
-# В exchange usk.dispult с routing_key usk:
-docker exec -it rabbitmq rabbitmqadmin \
-  -H localhost -P 15672 \
-  -u dev -p dev -V / \
-  publish exchange=usk.dispult routing_key=usk \
-  payload='{"message":"hello from rabbit","stream":"policy","level":"info"}' \
-  properties='{"content_type":"application/json"}'
-
-# Через default exchange в очередь (routing_key = имя очереди):
-docker exec -it rabbitmq rabbitmqadmin \
-  -H localhost -P 15672 \
-  -u dev -p dev -V / \
-  publish exchange=amq.default routing_key=USK-DisPult \
-  payload='{"message":"hello to queue via amq.default","stream":"policy","level":"info"}' \
-  properties='{"content_type":"application/json"}'
-
-
---------------------------------
-10) Проверить, что сообщение попало в очередь
---------------------------------
-docker exec -it rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers | grep USK-DisPult
-
-
---------------------------------
-11) Посмотреть сообщения в очереди (GET через HTTP API)
---------------------------------
-# ВАЖНО: это НЕ вытащит сообщения без последствий — может "ack" / "requeue"
-# Здесь пример: достать 1 сообщение и вернуть обратно (requeue=true):
-curl -s -u dev:dev -H "Content-Type: application/json" \
-  -X POST "http://localhost:15672/api/queues/%2F/USK-DisPult/get" \
-  -d '{"count":1,"ackmode":"ack_requeue_true","encoding":"auto"}' | head
-
-# Достать 1 сообщение и УДАЛИТЬ (осторожно):
-curl -s -u dev:dev -H "Content-Type: application/json" \
-  -X POST "http://localhost:15672/api/queues/%2F/USK-DisPult/get" \
-  -d '{"count":1,"ackmode":"ack_requeue_false","encoding":"auto"}' | head
-
-
---------------------------------
-12) Очистить очередь (purge)
---------------------------------
-# Через rabbitmqctl:
-docker exec -it rabbitmq rabbitmqctl purge_queue USK-DisPult
-
-# Через HTTP API:
-curl -s -u dev:dev -X DELETE "http://localhost:15672/api/queues/%2F/USK-DisPult/contents"
-
-
---------------------------------
-13) Удалить очередь
---------------------------------
-docker exec -it rabbitmq rabbitmqctl delete_queue USK-DisPult
-
-
---------------------------------
-14) Удалить exchange (осторожно)
---------------------------------
-docker exec -it rabbitmq rabbitmqctl delete_exchange usk.dispult
-
-
---------------------------------
-15) Полезные логи RabbitMQ
---------------------------------
-docker logs rabbitmq --tail 200
-
-# Внутри контейнера:
-docker exec -it rabbitmq sh -c 'ls -lah /var/log/rabbitmq && tail -n 200 /var/log/rabbitmq/rabbit@*.log'
-
-
---------------------------------
-16) UI (если проброшен порт 15672)
---------------------------------
-http://<HOST>:15672
-# Queues -> (очередь) -> Publish message / Get messages / Purge
-# Exchanges -> (exchange) -> Bindings / Publish message
-
-
-==============================
- End of file
-==============================
+deploy_prod:
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^release-.*$/'
+      when: manual
+    - when: never
