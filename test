@@ -1,113 +1,159 @@
 ==============================
- OpenSearch cleanup commands
+ RabbitMQ commands cheat-sheet
 ==============================
 
-# Базовый URL (подставь свой HOST при необходимости)
-http://localhost:9200
+# Примечания:
+# - rabbitmqctl работает внутри контейнера RabbitMQ
+# - rabbitmqadmin работает через Management API (HTTP), нужен порт 15672
+# - Подставляй свои значения: <HOST>, <RABBIT_CONTAINER>, <QUEUE>, <EXCHANGE>, <VHOST>, <USER>, <PASS>
 
 
 --------------------------------
-1) Посмотреть все индексы
+0) Быстрые переменные (для себя)
 --------------------------------
-curl http://localhost:9200/_cat/indices?v
+RABBIT_CONTAINER=rabbitmq
+HOST=localhost
+MGMT_PORT=15672
+VHOST=/
+USER=dev
+PASS=dev
 
 
 --------------------------------
-2) Посмотреть последние документы в индексе
+1) Проверить, что контейнер жив и порты проброшены
 --------------------------------
-curl "http://localhost:9200/usk-dispult-policy/_search?size=5&sort=@timestamp:desc&pretty"
+docker ps | grep rabbit
+
+# С хоста проверить доступ к management API:
+curl -s -u dev:dev http://localhost:15672/api/overview | head
 
 
 --------------------------------
-3) Удалить один документ по _id
+2) Список vhost
 --------------------------------
-curl -X DELETE "http://localhost:9200/usk-dispult-policy/_doc/<DOC_ID>"
+docker exec -it rabbitmq rabbitmqctl list_vhosts
 
 
 --------------------------------
-4) Удалить документы по тексту message
+3) Список пользователей
 --------------------------------
-curl -X POST "http://localhost:9200/usk-dispult-policy/_delete_by_query?pretty" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": {
-      "match": {
-        "message": "hello"
-      }
-    }
-  }'
+docker exec -it rabbitmq rabbitmqctl list_users
 
 
 --------------------------------
-5) Удалить документы по stream
+4) Права пользователя на vhost
 --------------------------------
-curl -X POST "http://localhost:9200/usk-dispult-policy/_delete_by_query?pretty" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": {
-      "term": {
-        "stream.keyword": "policy"
-      }
-    }
-  }'
+docker exec -it rabbitmq rabbitmqctl list_permissions -p /
+
+# Выдать полные права (осторожно):
+docker exec -it rabbitmq rabbitmqctl set_permissions -p / dev ".*" ".*" ".*"
 
 
 --------------------------------
-6) Удалить документы по диапазону времени
+5) Список очередей и их метрики
 --------------------------------
-curl -X POST "http://localhost:9200/usk-dispult-policy/_delete_by_query?pretty" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": {
-      "range": {
-        "@timestamp": {
-          "lt": "2026-01-21T00:00:00Z"
-        }
-      }
-    }
-  }'
+docker exec -it rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers
+
+# Только одна очередь:
+docker exec -it rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers | grep USK-DisPult
 
 
 --------------------------------
-7) Удалить ВСЕ документы из индекса (оставив индекс)
+6) Список exchange
 --------------------------------
-curl -X POST "http://localhost:9200/usk-dispult-policy/_delete_by_query?pretty" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": {
-      "match_all": {}
-    }
-  }'
+docker exec -it rabbitmq rabbitmqctl list_exchanges name type
 
 
 --------------------------------
-8) Удалить индекс целиком
+7) Список bindings
 --------------------------------
-curl -X DELETE "http://localhost:9200/usk-dispult-policy"
+docker exec -it rabbitmq rabbitmqctl list_bindings
 
 
 --------------------------------
-9) Удалить группу индексов по маске
+8) Посмотреть consumers (кто читает очередь)
 --------------------------------
-curl -X DELETE "http://localhost:9200/usk-dispult-policy*"
+docker exec -it rabbitmq rabbitmqctl list_consumers
 
 
 --------------------------------
-10) Посмотреть mapping индекса
+9) Опубликовать сообщение через rabbitmqadmin (Management API)
 --------------------------------
-curl "http://localhost:9200/usk-dispult-policy/_mapping?pretty"
+# В exchange usk.dispult с routing_key usk:
+docker exec -it rabbitmq rabbitmqadmin \
+  -H localhost -P 15672 \
+  -u dev -p dev -V / \
+  publish exchange=usk.dispult routing_key=usk \
+  payload='{"message":"hello from rabbit","stream":"policy","level":"info"}' \
+  properties='{"content_type":"application/json"}'
+
+# Через default exchange в очередь (routing_key = имя очереди):
+docker exec -it rabbitmq rabbitmqadmin \
+  -H localhost -P 15672 \
+  -u dev -p dev -V / \
+  publish exchange=amq.default routing_key=USK-DisPult \
+  payload='{"message":"hello to queue via amq.default","stream":"policy","level":"info"}' \
+  properties='{"content_type":"application/json"}'
 
 
 --------------------------------
-11) Поиск по всем индексам
+10) Проверить, что сообщение попало в очередь
 --------------------------------
-curl "http://localhost:9200/_search?q=message:hello&pretty"
+docker exec -it rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers | grep USK-DisPult
 
 
 --------------------------------
-12) Посмотреть индексы, связанные с Vector
+11) Посмотреть сообщения в очереди (GET через HTTP API)
 --------------------------------
-curl http://localhost:9200/_cat/indices?v | grep -E "vuln_input|usk-dispult"
+# ВАЖНО: это НЕ вытащит сообщения без последствий — может "ack" / "requeue"
+# Здесь пример: достать 1 сообщение и вернуть обратно (requeue=true):
+curl -s -u dev:dev -H "Content-Type: application/json" \
+  -X POST "http://localhost:15672/api/queues/%2F/USK-DisPult/get" \
+  -d '{"count":1,"ackmode":"ack_requeue_true","encoding":"auto"}' | head
+
+# Достать 1 сообщение и УДАЛИТЬ (осторожно):
+curl -s -u dev:dev -H "Content-Type: application/json" \
+  -X POST "http://localhost:15672/api/queues/%2F/USK-DisPult/get" \
+  -d '{"count":1,"ackmode":"ack_requeue_false","encoding":"auto"}' | head
+
+
+--------------------------------
+12) Очистить очередь (purge)
+--------------------------------
+# Через rabbitmqctl:
+docker exec -it rabbitmq rabbitmqctl purge_queue USK-DisPult
+
+# Через HTTP API:
+curl -s -u dev:dev -X DELETE "http://localhost:15672/api/queues/%2F/USK-DisPult/contents"
+
+
+--------------------------------
+13) Удалить очередь
+--------------------------------
+docker exec -it rabbitmq rabbitmqctl delete_queue USK-DisPult
+
+
+--------------------------------
+14) Удалить exchange (осторожно)
+--------------------------------
+docker exec -it rabbitmq rabbitmqctl delete_exchange usk.dispult
+
+
+--------------------------------
+15) Полезные логи RabbitMQ
+--------------------------------
+docker logs rabbitmq --tail 200
+
+# Внутри контейнера:
+docker exec -it rabbitmq sh -c 'ls -lah /var/log/rabbitmq && tail -n 200 /var/log/rabbitmq/rabbit@*.log'
+
+
+--------------------------------
+16) UI (если проброшен порт 15672)
+--------------------------------
+http://<HOST>:15672
+# Queues -> (очередь) -> Publish message / Get messages / Purge
+# Exchanges -> (exchange) -> Bindings / Publish message
 
 
 ==============================
